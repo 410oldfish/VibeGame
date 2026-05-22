@@ -10,11 +10,15 @@ namespace HexDemo.Editor
     {
         private const string PrefabPath = "Assets/Synty/SidekickCharacters/Characters/Starter/Starter_02/Starter_02.prefab";
         private const string QuaterniusFbxPath = "Assets/ThirdParty/Quaternius/UniversalAnimationLibraryStandard/Unity/UAL1_Standard.fbx";
+        private const string AlternateQuaterniusFbxPath = "Assets/Animations/UAL1_Standard.fbx";
         private const string OutputFolder = "Assets/Animations/Starter02";
         private const string IdleClipPath = OutputFolder + "/Starter_02_Idle.anim";
         private const string WalkClipPath = OutputFolder + "/Starter_02_Walk.anim";
         private const string ControllerPath = OutputFolder + "/Starter_02.controller";
         private const string MovingParameter = "IsMoving";
+        private const string AttackTrigger = "Attack";
+        private const string HitTrigger = "Hit";
+        private const string DeathTrigger = "Death";
 
         [InitializeOnLoadMethod]
         private static void GenerateOnLoad()
@@ -26,9 +30,10 @@ namespace HexDemo.Editor
         [MenuItem("Tools/Hex Demo/Rebuild Starter 02 Animations")]
         public static void Generate()
         {
-            if (File.Exists(QuaterniusFbxPath))
+            string quaterniusPath = ResolveAnimationLibraryPath();
+            if (!string.IsNullOrEmpty(quaterniusPath))
             {
-                GenerateFromQuaternius();
+                GenerateFromQuaternius(quaterniusPath);
                 return;
             }
 
@@ -54,14 +59,32 @@ namespace HexDemo.Editor
             Debug.Log("Generated Starter_02 idle/walk animation clips and controller.");
         }
 
-        private static void GenerateFromQuaternius()
+        [MenuItem("Tools/Hex Demo/Log Starter 02 Animation Clips")]
+        public static void LogAvailableQuaterniusClips()
+        {
+            string quaterniusPath = ResolveAnimationLibraryPath();
+            if (string.IsNullOrEmpty(quaterniusPath))
+            {
+                Debug.LogWarning("No animation library FBX found for Starter02AnimationAssetBuilder.");
+                return;
+            }
+
+            ConfigureQuaterniusImporter(quaterniusPath);
+            var clips = AssetDatabase.LoadAllAssetsAtPath(quaterniusPath);
+            Debug.Log($"Animation clips in {quaterniusPath}: {string.Join(", ", GetClipNames(clips))}");
+        }
+
+        private static void GenerateFromQuaternius(string quaterniusPath)
         {
             EnsureFolder(OutputFolder);
-            ConfigureQuaterniusImporter();
+            ConfigureQuaterniusImporter(quaterniusPath);
 
-            var clips = AssetDatabase.LoadAllAssetsAtPath(QuaterniusFbxPath);
+            var clips = AssetDatabase.LoadAllAssetsAtPath(quaterniusPath);
             AnimationClip idle = null;
             AnimationClip walk = null;
+            AnimationClip attack = null;
+            AnimationClip hit = null;
+            AnimationClip death = null;
 
             foreach (var asset in clips)
             {
@@ -74,6 +97,15 @@ namespace HexDemo.Editor
 
                 if (walk == null && IsPlainWalkName(clipName))
                     walk = clip;
+
+                if (attack == null && IsAttackName(clipName))
+                    attack = clip;
+
+                if (hit == null && IsHitName(clipName))
+                    hit = clip;
+
+                if (death == null && IsDeathName(clipName))
+                    death = clip;
             }
 
             if (idle == null)
@@ -82,21 +114,30 @@ namespace HexDemo.Editor
             if (walk == null)
                 walk = FindFirstClipContaining(clips, "walk");
 
+            if (attack == null)
+                attack = FindFirstMatchingClip(clips, "attack", "slash", "melee", "sword");
+
+            if (hit == null)
+                hit = FindFirstMatchingClip(clips, "hit", "hurt", "damage", "impact", "stagger");
+
+            if (death == null)
+                death = FindFirstMatchingClip(clips, "death", "die", "dead", "defeat", "knockout");
+
             if (idle == null || walk == null)
             {
-                Debug.LogWarning($"Could not find idle/walk clips in {QuaterniusFbxPath}. Found: {string.Join(", ", GetClipNames(clips))}");
+                Debug.LogWarning($"Could not find idle/walk clips in {quaterniusPath}. Found: {string.Join(", ", GetClipNames(clips))}");
                 return;
             }
 
-            SaveController(idle, walk);
+            SaveController(idle, walk, attack, hit, death);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log($"Generated Starter_02 controller from Quaternius clips: idle={idle.name}, walk={walk.name}");
+            Debug.Log($"Generated Starter_02 controller from Quaternius clips: idle={idle.name}, walk={walk.name}, attack={attack?.name ?? "none"}, hit={hit?.name ?? "none"}, death={death?.name ?? "none"}");
         }
 
-        private static void ConfigureQuaterniusImporter()
+        private static void ConfigureQuaterniusImporter(string quaterniusPath)
         {
-            var importer = AssetImporter.GetAtPath(QuaterniusFbxPath) as ModelImporter;
+            var importer = AssetImporter.GetAtPath(quaterniusPath) as ModelImporter;
             if (importer == null)
                 return;
 
@@ -132,6 +173,10 @@ namespace HexDemo.Editor
                         clips[i].lockRootHeightY = true;
                         clips[i].lockRootPositionXZ = true;
                     }
+                    else
+                    {
+                        clips[i].loopTime = false;
+                    }
                 }
 
                 importer.clipAnimations = clips;
@@ -148,6 +193,24 @@ namespace HexDemo.Editor
             {
                 if (asset is AnimationClip clip && clip.name.ToLowerInvariant().Contains(text))
                     return clip;
+            }
+
+            return null;
+        }
+
+        private static AnimationClip FindFirstMatchingClip(Object[] assets, params string[] terms)
+        {
+            foreach (var asset in assets)
+            {
+                if (asset is not AnimationClip clip)
+                    continue;
+
+                string name = clip.name.ToLowerInvariant();
+                for (int i = 0; i < terms.Length; i++)
+                {
+                    if (name.Contains(terms[i]))
+                        return clip;
+                }
             }
 
             return null;
@@ -185,6 +248,36 @@ namespace HexDemo.Editor
                    !clipName.Contains("right") &&
                    !clipName.Contains("strafe") &&
                    !clipName.Contains("crouch");
+        }
+
+        private static bool IsAttackName(string clipName)
+        {
+            return (clipName.Contains("attack") || clipName.Contains("slash") || clipName.Contains("melee") || clipName.Contains("sword")) &&
+                   !clipName.Contains("bow") &&
+                   !clipName.Contains("gun") &&
+                   !clipName.Contains("rifle") &&
+                   !clipName.Contains("pistol") &&
+                   !clipName.Contains("magic") &&
+                   !clipName.Contains("spell") &&
+                   !clipName.Contains("kick");
+        }
+
+        private static bool IsHitName(string clipName)
+        {
+            return clipName.Contains("hit") ||
+                   clipName.Contains("hurt") ||
+                   clipName.Contains("damage") ||
+                   clipName.Contains("impact") ||
+                   clipName.Contains("stagger");
+        }
+
+        private static bool IsDeathName(string clipName)
+        {
+            return clipName.Contains("death") ||
+                   clipName.Contains("die") ||
+                   clipName.Contains("dead") ||
+                   clipName.Contains("defeat") ||
+                   clipName.Contains("knockout");
         }
 
         private static IEnumerable<string> GetClipNames(Object[] assets)
@@ -370,13 +463,16 @@ namespace HexDemo.Editor
             AssetDatabase.CreateAsset(asset, path);
         }
 
-        private static void SaveController(AnimationClip idle, AnimationClip walk)
+        private static void SaveController(AnimationClip idle, AnimationClip walk, AnimationClip attack = null, AnimationClip hit = null, AnimationClip death = null)
         {
             if (File.Exists(ControllerPath))
                 AssetDatabase.DeleteAsset(ControllerPath);
 
             var controller = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
             controller.AddParameter(MovingParameter, AnimatorControllerParameterType.Bool);
+            controller.AddParameter(AttackTrigger, AnimatorControllerParameterType.Trigger);
+            controller.AddParameter(HitTrigger, AnimatorControllerParameterType.Trigger);
+            controller.AddParameter(DeathTrigger, AnimatorControllerParameterType.Trigger);
 
             var stateMachine = controller.layers[0].stateMachine;
             stateMachine.states = new ChildAnimatorState[0];
@@ -401,6 +497,63 @@ namespace HexDemo.Editor
             toIdle.hasExitTime = false;
             toIdle.duration = 0.08f;
             toIdle.AddCondition(AnimatorConditionMode.IfNot, 0f, MovingParameter);
+
+            if (attack != null)
+            {
+                var attackState = stateMachine.AddState("Attack");
+                attackState.motion = attack;
+                attackState.writeDefaultValues = true;
+
+                var fromAny = stateMachine.AddAnyStateTransition(attackState);
+                fromAny.hasExitTime = false;
+                fromAny.duration = 0.04f;
+                fromAny.AddCondition(AnimatorConditionMode.If, 0f, AttackTrigger);
+
+                var attackToIdle = attackState.AddTransition(idleState);
+                attackToIdle.hasExitTime = true;
+                attackToIdle.exitTime = 0.95f;
+                attackToIdle.duration = 0.06f;
+            }
+
+            if (hit != null)
+            {
+                var hitState = stateMachine.AddState("Hit");
+                hitState.motion = hit;
+                hitState.writeDefaultValues = true;
+
+                var fromAny = stateMachine.AddAnyStateTransition(hitState);
+                fromAny.hasExitTime = false;
+                fromAny.duration = 0.03f;
+                fromAny.AddCondition(AnimatorConditionMode.If, 0f, HitTrigger);
+
+                var hitToIdle = hitState.AddTransition(idleState);
+                hitToIdle.hasExitTime = true;
+                hitToIdle.exitTime = 0.95f;
+                hitToIdle.duration = 0.05f;
+            }
+
+            if (death != null)
+            {
+                var deathState = stateMachine.AddState("Death");
+                deathState.motion = death;
+                deathState.writeDefaultValues = true;
+
+                var fromAny = stateMachine.AddAnyStateTransition(deathState);
+                fromAny.hasExitTime = false;
+                fromAny.duration = 0.03f;
+                fromAny.AddCondition(AnimatorConditionMode.If, 0f, DeathTrigger);
+            }
+        }
+
+        private static string ResolveAnimationLibraryPath()
+        {
+            if (File.Exists(QuaterniusFbxPath))
+                return QuaterniusFbxPath;
+
+            if (File.Exists(AlternateQuaterniusFbxPath))
+                return AlternateQuaterniusFbxPath;
+
+            return null;
         }
 
         private static void EnsureFolder(string folder)

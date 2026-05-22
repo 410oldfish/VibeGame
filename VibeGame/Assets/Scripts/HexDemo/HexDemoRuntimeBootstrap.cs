@@ -38,21 +38,15 @@ namespace HexDemo
 
         public static void TryBootstrap()
         {
-            // Ensure we only build once per scene load.
-            if (Object.FindFirstObjectByType<HexGrid>() != null) return;
-            var existing = GameObject.Find(GridRootName);
-            if (existing != null) return;
-
-            var go = new GameObject(nameof(HexDemoRuntimeBootstrap));
-            DontDestroyOnLoad(go);
-            var comp = go.AddComponent<HexDemoRuntimeBootstrap>();
-            comp.StartCoroutine(comp.BootstrapRoutine());
+            HexAdventureController.TryBootstrap();
         }
 
         private IEnumerator BootstrapRoutine()
         {
             // Wait one frame so the scene camera & physics world are ready.
             yield return null;
+            Screen.SetResolution(1920, 1080, false);
+            HexTMPFontProvider.EnsureInitialized();
 
             // Build grid.
             var gridRoot = new GameObject(GridRootName);
@@ -119,7 +113,7 @@ namespace HexDemo
             battleController.unitYOffset = unitYOffset;
             battleController.moveSpeed = moveSpeed;
             battleController.stepStopDelay = stepStopDelay;
-            battleController.Initialize(grid, playerUnit, enemyUnit, Camera.main);
+            battleController.Initialize(grid, playerUnit, new[] { enemyUnit }, Camera.main);
 
             Destroy(gameObject);
         }

@@ -1,0 +1,18 @@
+{
+  "cards": [
+    {
+      "name": "伤口",
+      "cost": "-1",
+      "profession": "General",
+      "rarity": "Special",
+      "card_type": "Curse",
+      "description": "抽到时，受到2层流血。虚无。",
+      "attack_range": 0,
+      "target_type": "Self",
+      "is_directional": false,
+      "card_id": "C_06_001",
+      "cast_range": 0,
+      "effect_radius": 0
+    }
+  ]
+}

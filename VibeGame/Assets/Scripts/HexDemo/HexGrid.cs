@@ -3,8 +3,35 @@ using UnityEngine;
 
 namespace HexDemo
 {
+    public enum HexTileEffectType
+    {
+        Burning = 0,
+        Poisoned = 1,
+        Entangled = 2,
+        Custom = 3,
+    }
+
+    [System.Serializable]
+    public sealed class HexTileEffectState
+    {
+        public HexTileEffectType effectType;
+        public int stacks;
+        public int duration;
+
+        public HexTileEffectState Clone()
+        {
+            return new HexTileEffectState
+            {
+                effectType = effectType,
+                stacks = stacks,
+                duration = duration,
+            };
+        }
+    }
+
     public sealed class HexGrid : MonoBehaviour
     {
+        private const float TileModelVisualYOffset = -0.9f;
         private static readonly Vector3[] HexCorners =
         {
             Corner(0),
@@ -141,7 +168,7 @@ namespace HexDemo
             instance.transform.localScale = Vector3.one * scale;
 
             bounds = CalculateLocalBounds(instance.transform);
-            instance.transform.localPosition = new Vector3(0f, -bounds.min.y, 0f);
+            instance.transform.localPosition = new Vector3(0f, TileModelVisualYOffset - bounds.min.y, 0f);
 
             var renderers = instance.GetComponentsInChildren<Renderer>(true);
             Color topColor = GetTerrainColor(coord, terrainLift);
@@ -407,6 +434,7 @@ namespace HexDemo
         public HexAxialCoord coord;
         public HexGrid grid;
         public float topHeight;
+        private readonly List<HexTileEffectState> _effects = new();
 
         private Renderer[] _renderers = System.Array.Empty<Renderer>();
         private MeshRenderer _clickRenderer;
@@ -419,6 +447,9 @@ namespace HexDemo
         private bool _rangeTargetable;
         private bool _moveVisible;
         private bool _moveReachable;
+        private bool _pathVisible;
+        private bool _pathIsTarget;
+        private bool _pathIsInvalid;
 
         private static readonly Color HoverTint = new(1f, 0.92f, 0.55f, 1f);
         private static readonly Color ClickTint = new(1f, 0.72f, 0.32f, 1f);
@@ -426,8 +457,70 @@ namespace HexDemo
         private static readonly Color ColliderHitTint = new(1f, 0.62f, 0.25f, 0.3f);
         private static readonly Color RangeTint = new(0.34f, 0.8f, 0.95f, 0.12f);
         private static readonly Color RangeTargetTint = new(1f, 0.4f, 0.2f, 0.28f);
-        private static readonly Color MoveReachableTint = new(0.42f, 0.92f, 0.5f, 0.16f);
-        private static readonly Color MoveBlockedTint = new(1f, 0.28f, 0.28f, 0.16f);
+        private static readonly Color MoveReachableTint = new(0.36f, 0.9f, 0.42f, 0.22f);
+        private static readonly Color MoveBlockedTint = new(1f, 0.24f, 0.24f, 0.34f);
+        private static readonly Color PathTileTint = new(0.14f, 0.5f, 1f, 0.78f);
+        private static readonly Color PathTargetTint = new(1f, 0.9f, 0.18f, 0.92f);
+        private static readonly Color PathInvalidTint = new(1f, 0.18f, 0.18f, 0.9f);
+
+        public IReadOnlyList<HexTileEffectState> Effects => _effects;
+
+        public void AddOrRefreshEffect(HexTileEffectType effectType, int stacks, int duration)
+        {
+            if (stacks <= 0 || duration <= 0)
+                return;
+
+            for (int i = 0; i < _effects.Count; i++)
+            {
+                if (_effects[i].effectType != effectType)
+                    continue;
+
+                _effects[i].stacks += stacks;
+                _effects[i].duration = Mathf.Max(_effects[i].duration, duration);
+                return;
+            }
+
+            _effects.Add(new HexTileEffectState
+            {
+                effectType = effectType,
+                stacks = stacks,
+                duration = duration,
+            });
+        }
+
+        public bool TryGetEffect(HexTileEffectType effectType, out HexTileEffectState effect)
+        {
+            for (int i = 0; i < _effects.Count; i++)
+            {
+                if (_effects[i].effectType != effectType)
+                    continue;
+
+                effect = _effects[i];
+                return true;
+            }
+
+            effect = null;
+            return false;
+        }
+
+        public void RemoveEffect(HexTileEffectType effectType)
+        {
+            for (int i = _effects.Count - 1; i >= 0; i--)
+            {
+                if (_effects[i].effectType == effectType)
+                    _effects.RemoveAt(i);
+            }
+        }
+
+        public void TickEffectsDuration()
+        {
+            for (int i = _effects.Count - 1; i >= 0; i--)
+            {
+                _effects[i].duration = Mathf.Max(0, _effects[i].duration - 1);
+                if (_effects[i].duration <= 0)
+                    _effects.RemoveAt(i);
+            }
+        }
 
         public void CacheVisuals()
         {
@@ -486,6 +579,14 @@ namespace HexDemo
             ApplyVisuals();
         }
 
+        public void SetPathPreview(bool visible, bool isTarget, bool isInvalid)
+        {
+            _pathVisible = visible;
+            _pathIsTarget = isTarget;
+            _pathIsInvalid = isInvalid;
+            ApplyVisuals();
+        }
+
         public void FlashClick()
         {
             if (!isActiveAndEnabled)
@@ -515,24 +616,49 @@ namespace HexDemo
 
         private void ApplyVisuals()
         {
+            Color tileTint = Color.clear;
+            float tileTintStrength = 0f;
+            if (_pathVisible)
+            {
+                tileTint = _pathIsInvalid ? PathInvalidTint : _pathIsTarget ? PathTargetTint : PathTileTint;
+                tileTintStrength = _pathIsInvalid ? 0.65f : _pathIsTarget ? 0.58f : 0.48f;
+            }
+            else if (_rangeVisible)
+            {
+                tileTint = _rangeTargetable ? RangeTargetTint : RangeTint;
+                tileTintStrength = _rangeTargetable ? 0.3f : 0.18f;
+            }
+            else if (_moveVisible)
+            {
+                tileTint = _moveReachable ? MoveReachableTint : MoveBlockedTint;
+                tileTintStrength = _moveReachable ? 0.2f : 0.26f;
+            }
+
             for (int i = 0; i < _materialStates.Count; i++)
             {
                 var state = _materialStates[i];
-                state.material.color = Color.Lerp(state.baseColor, HoverTint, _hoverStrength * 0.45f);
+                Color color = state.baseColor;
+                if (tileTintStrength > 0f)
+                    color = Color.Lerp(color, tileTint, tileTintStrength);
+                if (_hoverStrength > 0.001f)
+                    color = Color.Lerp(color, HoverTint, _hoverStrength * 0.35f);
+                state.material.color = color;
             }
 
             if (_clickRenderer == null)
                 return;
 
-            bool showCollider = _hoverStrength > 0.001f || _rangeVisible || _moveVisible;
+            bool showCollider = _hoverStrength > 0.001f || _rangeVisible || _moveVisible || _pathVisible;
             _clickRenderer.enabled = showCollider;
             var materials = _clickRenderer.materials;
-            Color targetTint = _rangeVisible
+            Color targetTint = _pathVisible
+                ? (_pathIsInvalid ? PathInvalidTint : _pathIsTarget ? PathTargetTint : PathTileTint)
+                : _rangeVisible
                 ? (_rangeTargetable ? RangeTargetTint : RangeTint)
                 : _moveVisible
                     ? (_moveReachable ? MoveReachableTint : MoveBlockedTint)
                 : (_hoverColliderHit ? ColliderHitTint : ColliderTint);
-            float lerpStrength = (_rangeVisible || _moveVisible) ? 1f : _hoverStrength;
+            float lerpStrength = (_pathVisible || _rangeVisible || _moveVisible) ? 1f : _hoverStrength;
             for (int i = 0; i < materials.Length && i < _clickBaseColors.Count; i++)
                 materials[i].color = Color.Lerp(_clickBaseColors[i], targetTint, lerpStrength);
         }

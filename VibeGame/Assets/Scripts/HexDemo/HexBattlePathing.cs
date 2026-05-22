@@ -85,6 +85,84 @@ namespace HexDemo
             return CubeRound(q, r);
         }
 
+        public static int GetPrimaryDirectionIndex(HexGrid grid, HexAxialCoord from, HexAxialCoord to)
+        {
+            Vector3 fromWorld = grid.AxialToWorld(from);
+            Vector3 toWorld = grid.AxialToWorld(to);
+            Vector3 direction = toWorld - fromWorld;
+            direction.y = 0f;
+            if (direction.sqrMagnitude <= 0.0001f)
+                return 0;
+
+            direction.Normalize();
+            float bestDot = float.NegativeInfinity;
+            int bestIndex = 0;
+            for (int i = 0; i < HexAxialCoord.Directions.Length; i++)
+            {
+                var neighbor = HexAxialCoord.Neighbor(from, i);
+                Vector3 neighborDirection = grid.AxialToWorld(neighbor) - fromWorld;
+                neighborDirection.y = 0f;
+                neighborDirection.Normalize();
+                float dot = Vector3.Dot(direction, neighborDirection);
+                if (dot > bestDot)
+                {
+                    bestDot = dot;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        public static List<HexAxialCoord> GetKnockbackPath(
+            HexGrid grid,
+            HexAxialCoord source,
+            HexAxialCoord target,
+            int distance,
+            System.Func<HexAxialCoord, bool> isBlocked)
+        {
+            var path = new List<HexAxialCoord> { target };
+            if (grid == null || distance <= 0)
+                return path;
+
+            int directionIndex = GetPrimaryDirectionIndex(grid, source, target);
+            HexAxialCoord current = target;
+            for (int step = 0; step < distance; step++)
+            {
+                var next = HexAxialCoord.Neighbor(current, directionIndex);
+                if (!grid.IsCoordInside(next))
+                    break;
+
+                if (isBlocked != null && isBlocked(next))
+                    break;
+
+                path.Add(next);
+                current = next;
+            }
+
+            return path;
+        }
+
+        public static List<HexAxialCoord> GetLineCoords(HexGrid grid, HexAxialCoord source, HexAxialCoord target, int distance)
+        {
+            var coords = new List<HexAxialCoord>();
+            if (grid == null || distance <= 0)
+                return coords;
+
+            int directionIndex = GetPrimaryDirectionIndex(grid, source, target);
+            HexAxialCoord current = source;
+            for (int step = 0; step < distance; step++)
+            {
+                current = HexAxialCoord.Neighbor(current, directionIndex);
+                if (!grid.IsCoordInside(current))
+                    break;
+
+                coords.Add(current);
+            }
+
+            return coords;
+        }
+
         private static float GetGridOriginOffsetX(HexGrid grid)
         {
             var center = grid.AxialToWorld(new HexAxialCoord(0, 0));

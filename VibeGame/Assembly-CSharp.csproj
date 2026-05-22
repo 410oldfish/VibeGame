@@ -46,18 +46,29 @@
     <Analyzer Include="F:\UnityEngine\6000.0.58f2\Editor\Data\Tools\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\Scripts\Network\BattleNetworkController.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexDemoRuntimeBootstrap.cs" />
+    <Compile Include="Assets\Scripts\Network\LobbyNetworkController.cs" />
     <Compile Include="Assets\Synty\SidekickCharacters\_Demos\Scripts\RandomisedLayerWeight.cs" />
     <Compile Include="Assets\Synty\SidekickCharacters\_Demos\Scripts\RuntimePartsDemo.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexBattleUI.cs" />
     <Compile Include="Assets\Synty\SidekickCharacters\_Demos\Scripts\RuntimeColorDemo.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexBattleController.cs" />
+    <Compile Include="Assets\Scripts\Battle\State\HexBattleStateSnapshot.cs" />
+    <Compile Include="Assets\Scripts\HexDemo\HexAdventureController.cs" />
+    <Compile Include="Assets\Scripts\Battle\Random\HexBattleRandomService.cs" />
     <Compile Include="Assets\Synty\SidekickCharacters\_Demos\Scripts\ExpressionSwitcher.cs" />
+    <Compile Include="Assets\Scripts\Network\GameNetworkManager.cs" />
     <Compile Include="Assets\TutorialInfo\Scripts\Readme.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexBattleCore.cs" />
+    <Compile Include="Assets\Scripts\Network\NetworkMessages\HexNetworkMessages.cs" />
+    <Compile Include="Assets\Scripts\HexDemo\HexRestController.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexBattleUnit.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexBattlePathing.cs" />
+    <Compile Include="Assets\Scripts\HexDemo\HexNetworkModels.cs" />
+    <Compile Include="Assets\Scripts\HexDemo\HexNetworkSessionController.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexAxialCoord.cs" />
+    <Compile Include="Assets\Scripts\HexDemo\HexAdventureCore.cs" />
     <Compile Include="Assets\Scripts\HexDemo\HexGrid.cs" />
     <Compile Include="Assets\Synty\SidekickCharacters\_Demos\Scripts\RuntimePresetDemo.cs" />
     <None Include="Assets\TextMesh Pro\Shaders\TMPro.cginc" />
