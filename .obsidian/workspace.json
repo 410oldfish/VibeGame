@@ -1,24 +1,24 @@
-﻿{
+{
   "main": {
-    "id": "d7b7d05cfc90cac0",
+    "id": "895e165432f37cda",
     "type": "split",
     "children": [
       {
-        "id": "e7a29ae77688e73f",
+        "id": "0d7121b15ef4962f",
         "type": "tabs",
         "children": [
           {
-            "id": "44292f588549287f",
+            "id": "806b858b44f97a3c",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "状态效果系统/减益状态.md",
+                "file": "design/状态/增益状态.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "减益状态"
+              "title": "增益状态"
             }
           }
         ]
@@ -27,15 +27,15 @@
     "direction": "vertical"
   },
   "left": {
-    "id": "68809f95b74e943a",
+    "id": "757c4ff2e1732fec",
     "type": "split",
     "children": [
       {
-        "id": "7f5a4c009225dd7a",
+        "id": "a1a32cb165fd3f85",
         "type": "tabs",
         "children": [
           {
-            "id": "3ff3583f0033fbd6",
+            "id": "09321eb4a930d4f4",
             "type": "leaf",
             "state": {
               "type": "file-explorer",
@@ -48,7 +48,7 @@
             }
           },
           {
-            "id": "158fb5da47aad4e9",
+            "id": "62e2ff59781980b7",
             "type": "leaf",
             "state": {
               "type": "search",
@@ -65,7 +65,7 @@
             }
           },
           {
-            "id": "88210dbf4f608215",
+            "id": "29111a09f3a9bae2",
             "type": "leaf",
             "state": {
               "type": "bookmarks",
@@ -81,19 +81,20 @@
     "width": 300
   },
   "right": {
-    "id": "13df26a929e5ec56",
+    "id": "db952cb3ff100882",
     "type": "split",
     "children": [
       {
-        "id": "2f39495d2b95f575",
+        "id": "55c2b7dc453e0787",
         "type": "tabs",
         "children": [
           {
-            "id": "d9b35fa79179a184",
+            "id": "e7ab45e3d96c7365",
             "type": "leaf",
             "state": {
               "type": "backlink",
               "state": {
+                "file": "design/状态/增益状态.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -103,24 +104,25 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "反向链接"
+              "title": "增益状态 的反向链接列表"
             }
           },
           {
-            "id": "488bb37655721ca0",
+            "id": "bf5cb5bc09cce3ac",
             "type": "leaf",
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "design/状态/增益状态.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "出链"
+              "title": "增益状态 的出链列表"
             }
           },
           {
-            "id": "4d0abedc1349afcc",
+            "id": "0300765ee2f58608",
             "type": "leaf",
             "state": {
               "type": "tag",
@@ -135,7 +137,7 @@
             }
           },
           {
-            "id": "49fd6e8fe5233710",
+            "id": "222a92d81bb2af0f",
             "type": "leaf",
             "state": {
               "type": "all-properties",
@@ -149,18 +151,18 @@
             }
           },
           {
-            "id": "71f7f2f0bf642cd3",
+            "id": "6db6349a968b88dc",
             "type": "leaf",
             "state": {
               "type": "outline",
               "state": {
-                "file": "欢迎.md",
+                "file": "design/状态/增益状态.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "欢迎 的大纲"
+              "title": "增益状态 的大纲"
             }
           }
         ]
@@ -181,27 +183,21 @@
       "bases:新建数据库": false
     }
   },
-  "active": "44292f588549287f",
+  "active": "806b858b44f97a3c",
   "lastOpenFiles": [
-    "状态效果系统/增益状态.md",
-    "状态效果系统/减益状态.md",
-    "联机系统/联网.md",
-    "联机系统/网络方案.md",
-    "68365100",
-    "97365100",
-    "C6365100",
-    "E5365100",
-    "24365100",
-    "53365100",
-    "A2365100",
-    "D1365100",
-    "41365100",
-    "联机系统/联机系统设计.md",
-    "战斗系统/战斗系统.md",
-    "职业系统/战士.md",
-    "职业系统/骑士.md",
-    "职业系统/德鲁伊.md",
-    "创建链接.md",
-    "欢迎.md"
+    "design/状态/减益状态.md",
+    "design/遭遇/遭遇与原型战斗设计.md",
+    "design/平衡/原型数值与测试观察点.md",
+    "design/规则/状态技能与道具联动规则.md",
+    "design/规则/网络方案.md",
+    "design/规则/冒险地图与关卡设计.md",
+    "design/规则/六边形战斗规则.md",
+    "design/规则/联网.md",
+    "design/规则/卡牌与角色五维设计.md",
+    "design/规则/卡牌与构筑系统设计.md",
+    "design/规则/奖励与成长设计.md",
+    "design/规则/基础规则.md",
+    "design/规则/敌人牌组与意图机制.md",
+    "design/地形/地形与地形改装规则.md"
   ]
 }
