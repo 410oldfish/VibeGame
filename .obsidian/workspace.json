@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "design/状态/增益状态.md",
+                "file": "design/职业系统/战士.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "增益状态"
+              "title": "战士"
             }
           }
         ]
@@ -185,6 +185,13 @@
   },
   "active": "806b858b44f97a3c",
   "lastOpenFiles": [
+    "design/状态效果系统/增益状态.md",
+    "design/敌人系统/哥布林.md",
+    "design/卡牌构筑系统/玩家基础卡牌数值基准.md",
+    "design/状态效果系统/减益状态.md",
+    "design/职业系统/德鲁伊.md",
+    "design/游戏粗略策划案.md",
+    "design/冒险系统/冒险地图与关卡设计.md",
     "design/状态/减益状态.md",
     "design/遭遇/遭遇与原型战斗设计.md",
     "design/平衡/原型数值与测试观察点.md",
