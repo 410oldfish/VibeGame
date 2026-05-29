@@ -93,19 +93,20 @@ namespace HexDemo
             enemyUnit.Initialize(new HexBattleUnitState
             {
                 id = "enemy_01",
-                displayName = "Slime",
+                displayName = "Goblin",
                 faction = HexBattleFaction.Enemy,
                 maxHealth = 3,
                 currentHealth = 3,
                 armor = 0,
                 energy = 0,
-                maxEnergy = 3,
-                drawPerTurn = 4,
-                maxMovePoints = 2,
-                currentMovePoints = 2,
+                maxEnergy = 0,
+                drawPerTurn = 0,
+                maxMovePoints = 0,
+                currentMovePoints = 0,
                 attackRange = 1,
+                emptyDrawPileStrengthGain = 3,
                 coord = enemyCoord,
-            }, enemyAnimator, HexCardLibrary.CreateStarterDeck());
+            }, enemyAnimator, HexCardLibrary.CreateGoblinDeck());
             enemyUnit.SnapTo(grid, unitYOffset);
 
             var battleControllerGO = new GameObject("HexBattleController_Runtime");

@@ -60,6 +60,7 @@ namespace HexDemo
     {
         Attack = 0,
         Defend = 1,
+        MoveToward = 2,
     }
 
     public enum HexCardKeywordType
@@ -190,14 +191,24 @@ namespace HexDemo
         {
             for (int i = 0; i < count; i++)
             {
-                RefillDrawPileIfNeeded();
-                if (_drawPile.Count == 0)
+                var nextCard = DrawCard(out _);
+                if (nextCard == null)
                     return;
-
-                var nextCard = _drawPile[^1];
-                _drawPile.RemoveAt(_drawPile.Count - 1);
-                _hand.Add(nextCard);
             }
+        }
+
+        public HexCardInstance DrawCard(out bool emptiedDrawPile)
+        {
+            emptiedDrawPile = false;
+            RefillDrawPileIfNeeded();
+            if (_drawPile.Count == 0)
+                return null;
+
+            var nextCard = _drawPile[^1];
+            _drawPile.RemoveAt(_drawPile.Count - 1);
+            _hand.Add(nextCard);
+            emptiedDrawPile = _drawPile.Count == 0;
+            return nextCard;
         }
 
         public void DiscardFromHand(HexCardInstance card, bool exhaust = false)
@@ -343,6 +354,7 @@ namespace HexDemo
         public int maxMovePoints;
         public int currentMovePoints;
         public int attackRange;
+        public int emptyDrawPileStrengthGain;
         public HexWeaponType weapon;
         public bool drawDisabledThisTurn;
         public int attackRepeatBonusThisTurn;
@@ -610,6 +622,44 @@ namespace HexDemo
             color = new Color(0.91f, 0.56f, 0.3f, 1f),
         };
 
+        private static readonly HexCardDefinition GoblinStrike = new()
+        {
+            id = "enemy_goblin_strike",
+            displayName = "打击",
+            cardType = HexCardType.Attack,
+            profession = HexCardProfession.Monster,
+            effectType = HexCardEffectType.Attack,
+            targetType = HexCardTargetType.EnemyUnit,
+            energyCost = 0,
+            amount = 5,
+            range = 1,
+            castRange = 1,
+            effectRadius = 0,
+            priority = 1,
+            rarity = "Enemy",
+            description = "对距离1的敌方单位造成5点伤害。",
+            color = new Color(0.77f, 0.3f, 0.25f, 1f),
+        };
+
+        private static readonly HexCardDefinition GoblinApproach = new()
+        {
+            id = "enemy_goblin_approach",
+            displayName = "接近",
+            cardType = HexCardType.Skill,
+            profession = HexCardProfession.Monster,
+            effectType = HexCardEffectType.MoveToward,
+            targetType = HexCardTargetType.EnemyUnit,
+            energyCost = 0,
+            amount = 1,
+            range = 0,
+            castRange = 0,
+            effectRadius = 0,
+            priority = 2,
+            rarity = "Enemy",
+            description = "朝敌方单位移动1距离。",
+            color = new Color(0.48f, 0.62f, 0.28f, 1f),
+        };
+
         private static readonly IReadOnlyList<HexCardDefinition> RewardPool = new[]
         {
             Attack,
@@ -634,6 +684,8 @@ namespace HexDemo
         public static HexCardDefinition GetDefend() => Defend;
         public static HexCardDefinition GetDaze() => Daze;
         public static HexCardDefinition GetWound() => Wound;
+        public static HexCardDefinition GetGoblinStrike() => GoblinStrike;
+        public static HexCardDefinition GetGoblinApproach() => GoblinApproach;
         public static IReadOnlyList<HexCardDefinition> GetRewardPool() => RewardPool;
         public static IReadOnlyList<HexCardDefinition> GetCommonPool() => CommonPool;
         public static IReadOnlyList<HexCardDefinition> GetWarriorPool()
@@ -683,10 +735,15 @@ namespace HexDemo
 
         public static List<HexCardDefinition> CreateMonsterDeck()
         {
+            return CreateGoblinDeck();
+        }
+
+        public static List<HexCardDefinition> CreateGoblinDeck()
+        {
             return new List<HexCardDefinition>
             {
-                Attack, Attack, Attack, Attack, Attack,
-                Defend, Defend, Defend, Defend,
+                GoblinStrike, GoblinStrike, GoblinStrike, GoblinStrike,
+                GoblinApproach, GoblinApproach, GoblinApproach, GoblinApproach, GoblinApproach,
             };
         }
 

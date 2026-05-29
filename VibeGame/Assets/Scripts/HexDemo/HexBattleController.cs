@@ -16,6 +16,7 @@ namespace HexDemo
             public bool collided;
         }
 
+        private const int EnemyIntentDrawCount = 3;
         private const int WeaponSkillEnergyCost = 1;
         private const int WeaponSkillCooldown = 2;
 
@@ -140,6 +141,7 @@ namespace HexDemo
                 builder.Append('\n');
                 builder.Append($"Enemy {i + 1}  HP {enemy.State.currentHealth}/{enemy.State.maxHealth}  Armor {enemy.State.armor}  Energy {enemy.State.energy}/{enemy.State.maxEnergy}  Move {enemy.State.currentMovePoints}/{enemy.State.maxMovePoints}");
                 AppendStatusEffects(builder, enemy);
+                AppendEnemyIntent(builder, enemy);
             }
 
             return builder.ToString();
@@ -951,6 +953,7 @@ namespace HexDemo
             _currentTurn = faction;
             if (_currentTurn == HexBattleFaction.Player)
             {
+                PrepareEnemyIntents();
                 _playerUnit.BeginTurn();
                 ApplyDruidBeginTurnPassives(_playerUnit);
                 ApplyBurningAura(_playerUnit);
@@ -1052,69 +1055,21 @@ namespace HexDemo
                 if (primaryTarget == null || !primaryTarget.IsAlive)
                     yield break;
 
-                yield return TryEnemyMove(enemy, primaryTarget);
+                if (enemy.Deck.Hand.Count == 0)
+                    DrawEnemyIntentCards(enemy);
 
-                bool playedAny = true;
-                while (playedAny && enemy.State.energy > 0 && enemy.Deck.Hand.Count > 0 && enemy.IsAlive && _playerUnit.IsAlive)
+                var intentCards = enemy.Deck.Hand.ToList();
+                for (int cardIndex = 0; cardIndex < intentCards.Count; cardIndex++)
                 {
-                    playedAny = false;
-                    var orderedCards = enemy.Deck.Hand
-                        .Where(card => !card.definition.isUnplayable)
-                        .Where(enemy.CanPay)
-                        .OrderBy(card => card.definition.priority)
-                        .ThenBy(card => card.definition.energyCost)
-                        .ToList();
+                    var card = intentCards[cardIndex];
+                    if (card == null || !enemy.Deck.Hand.Contains(card))
+                        continue;
 
-                    foreach (var card in orderedCards)
-                    {
-                        bool cardPlayed = false;
-                        primaryTarget = GetPrimaryEnemyTarget(enemy);
-                        if (primaryTarget == null || !primaryTarget.IsAlive)
-                            primaryTarget = _playerUnit;
-                        if (primaryTarget == null || !primaryTarget.IsAlive)
-                            yield break;
+                    yield return ResolveEnemyIntentCard(enemy, card);
+                    if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive || !enemy.IsAlive)
+                        yield break;
 
-                        if (card.definition.effectType == HexCardEffectType.Attack)
-                        {
-                            if (card.definition.targetType == HexCardTargetType.Direction)
-                            {
-                                var directionalTargets = GetDirectionalTargets(enemy, primaryTarget.State.coord, card.definition);
-                                if (directionalTargets.Contains(primaryTarget))
-                                {
-                                    yield return ResolveCardRoutine(enemy, primaryTarget, card, primaryTarget.State.coord);
-                                    cardPlayed = true;
-                                }
-                            }
-                            else if (card.definition.targetType == HexCardTargetType.Tile)
-                            {
-                                if (HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange)
-                                {
-                                    yield return ResolveCardRoutine(enemy, primaryTarget, card, primaryTarget.State.coord);
-                                    cardPlayed = true;
-                                }
-                            }
-                            else if (HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange &&
-                                     CanAttackTarget(enemy, primaryTarget))
-                            {
-                                yield return ResolveCardRoutine(enemy, primaryTarget, card);
-                                cardPlayed = true;
-                            }
-                        }
-                        else if (card.definition.effectType == HexCardEffectType.Defend)
-                        {
-                            yield return ResolveCardRoutine(enemy, enemy, card);
-                            cardPlayed = true;
-                        }
-
-                        if (cardPlayed)
-                        {
-                            playedAny = true;
-                            yield return new WaitForSeconds(0.1f);
-                            if (!_playerUnit.IsAlive || _battleFinished)
-                                yield break;
-                            break;
-                        }
-                    }
+                    yield return new WaitForSeconds(0.1f);
                 }
 
                 enemy.EndTurn();
@@ -1126,6 +1081,100 @@ namespace HexDemo
 
             yield return new WaitForSeconds(0.2f);
             BeginTurn(HexBattleFaction.Player);
+        }
+
+        private void PrepareEnemyIntents()
+        {
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                var enemy = _enemyUnits[i];
+                if (enemy == null || !enemy.IsAlive)
+                    continue;
+
+                enemy.Deck.DiscardHand();
+                DrawEnemyIntentCards(enemy);
+                enemy.RefreshLabel();
+            }
+        }
+
+        private void DrawEnemyIntentCards(HexBattleUnit enemy)
+        {
+            if (enemy == null)
+                return;
+
+            for (int i = 0; i < EnemyIntentDrawCount; i++)
+            {
+                var card = enemy.Deck.DrawCard(out bool emptiedDrawPile);
+                if (card == null)
+                    break;
+
+                if (emptiedDrawPile)
+                    TriggerEnemyDrawPileEmptiedEffect(enemy);
+            }
+        }
+
+        private void TriggerEnemyDrawPileEmptiedEffect(HexBattleUnit enemy)
+        {
+            if (enemy == null || enemy.State == null || !enemy.IsAlive)
+                return;
+
+            int strengthGain = Mathf.Max(0, enemy.State.emptyDrawPileStrengthGain);
+            if (strengthGain <= 0)
+                return;
+
+            enemy.GainStrength(strengthGain);
+            enemy.RefreshLabel();
+            Debug.Log($"{enemy.State.displayName} played a special empty-deck card: Strength +{strengthGain}.");
+        }
+
+        private IEnumerator ResolveEnemyIntentCard(HexBattleUnit enemy, HexCardInstance card)
+        {
+            bool resolved = false;
+            if (enemy == null || card?.definition == null || !enemy.IsAlive)
+                yield break;
+
+            var primaryTarget = GetPrimaryEnemyTarget(enemy);
+            if (primaryTarget == null || !primaryTarget.IsAlive)
+                primaryTarget = _playerUnit;
+
+            if (card.definition.effectType == HexCardEffectType.MoveToward)
+            {
+                if (primaryTarget != null && primaryTarget.IsAlive)
+                {
+                    int maxSteps = Mathf.Max(1, card.definition.amount);
+                    var path = FindBestApproachPath(enemy, primaryTarget.State.coord, 1);
+                    if (path != null && path.Count >= 2)
+                    {
+                        int takeCount = Mathf.Min(path.Count, maxSteps + 1);
+                        var trimmed = path.Take(takeCount).ToList();
+                        yield return MoveUnitRoutine(enemy, trimmed, 0, primaryTarget.State.coord);
+                        resolved = true;
+                    }
+                }
+            }
+            else if (card.definition.effectType == HexCardEffectType.Attack)
+            {
+                if (primaryTarget != null &&
+                    primaryTarget.IsAlive &&
+                    HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange &&
+                    CanAttackTarget(enemy, primaryTarget))
+                {
+                    yield return ResolveCardRoutine(enemy, primaryTarget, card);
+                    resolved = true;
+                }
+            }
+            else if (card.definition.effectType == HexCardEffectType.Defend)
+            {
+                yield return ResolveCardRoutine(enemy, enemy, card);
+                resolved = true;
+            }
+
+            if (!resolved && enemy.Deck.Hand.Contains(card))
+            {
+                DiscardOrExhaustCard(enemy, card, false);
+                enemy.RefreshLabel();
+                _ui.Refresh();
+            }
         }
 
         private IEnumerator TryEnemyMove(HexBattleUnit enemy, HexBattleUnit player)
@@ -2071,7 +2120,7 @@ namespace HexDemo
 
             List<HexAxialCoord> bestPath = null;
             float bestDistanceScore = float.PositiveInfinity;
-            foreach (var candidate in grid.Tiles.Keys)
+            foreach (var candidate in grid.Tiles.Keys.OrderBy(coord => coord.q).ThenBy(coord => coord.r))
             {
                 if (candidate.Equals(movingUnit.State.coord))
                     continue;
@@ -2227,8 +2276,8 @@ namespace HexDemo
                 for (int cardIndex = 0; cardIndex < enemy.Deck.Hand.Count; cardIndex++)
                 {
                     var card = enemy.Deck.Hand[cardIndex];
-                    if (card.definition.effectType == HexCardEffectType.Attack && enemy.CanPay(card))
-                        total += Mathf.Max(0, card.definition.amount);
+                    if (card.definition.effectType == HexCardEffectType.Attack)
+                        total += Mathf.Max(0, card.definition.amount + enemy.State.strength);
                 }
             }
 
@@ -2618,6 +2667,24 @@ namespace HexDemo
                 builder.Append($"  Thorns {unit.State.thorns}");
             if (unit.State.druidForm != HexDruidFormType.None)
                 builder.Append($"  Form {unit.State.druidForm}");
+        }
+
+        private static void AppendEnemyIntent(StringBuilder builder, HexBattleUnit enemy)
+        {
+            if (enemy == null || enemy.State == null || enemy.State.faction != HexBattleFaction.Enemy)
+                return;
+            if (enemy.Deck.Hand.Count == 0)
+                return;
+
+            builder.Append("  Intent ");
+            for (int i = 0; i < enemy.Deck.Hand.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append(" > ");
+
+                var definition = enemy.Deck.Hand[i]?.definition;
+                builder.Append(definition != null ? definition.displayName : "?");
+            }
         }
 
         private HexBattleUnit GetCurrentUnit()

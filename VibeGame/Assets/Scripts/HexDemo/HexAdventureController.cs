@@ -429,19 +429,20 @@ namespace HexDemo
                 enemyUnit.Initialize(new HexBattleUnitState
                 {
                     id = $"enemy_{i + 1}",
-                    displayName = i == 0 ? "Slime" : $"Slime {i + 1}",
+                    displayName = i == 0 ? "Goblin" : $"Goblin {i + 1}",
                     faction = HexBattleFaction.Enemy,
                     maxHealth = 3,
                     currentHealth = 3,
                     armor = 0,
                     energy = 0,
-                    maxEnergy = 3,
-                    drawPerTurn = 4,
-                    maxMovePoints = 2,
-                    currentMovePoints = 2,
+                    maxEnergy = 0,
+                    drawPerTurn = 0,
+                    maxMovePoints = 0,
+                    currentMovePoints = 0,
                     attackRange = 1,
+                    emptyDrawPileStrengthGain = 3,
                     coord = enemyCoord,
-                }, enemyAnimator, HexCardLibrary.CreateMonsterDeck());
+                }, enemyAnimator, HexCardLibrary.CreateGoblinDeck());
                 enemyUnit.SnapTo(grid, 0.03f);
                 enemyUnits.Add(enemyUnit);
             }
