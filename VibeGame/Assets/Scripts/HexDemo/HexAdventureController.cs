@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
+using TEngine;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -39,6 +40,7 @@ namespace HexDemo
         private Camera _sceneCamera;
         private bool _isDraggingMap;
         private Vector2 _lastMapPointerPosition;
+        private bool _updateRegistered;
 
         public static void TryBootstrap()
         {
@@ -51,18 +53,21 @@ namespace HexDemo
 
         private void Start()
         {
+            HexGameModule.Initialize();
             Screen.SetResolution(1920, 1080, false);
             HexTMPFontProvider.EnsureInitialized();
             EnsureEventSystem();
             _networkSession = HexNetworkSessionController.EnsureExists();
-            Network.GameNetworkManager.EnsureExists();
+            HexDemo.Network.GameNetworkManager.EnsureExists();
             _sceneCamera = Camera.main;
+            RegisterUpdate();
+            GameEvent.Send(HexGameEvents.AdventureStarted, this);
             ShowProfessionSelection();
         }
 
-        private void Update()
+        private void OnDestroy()
         {
-            UpdateMapPanInput();
+            UnregisterUpdate();
         }
 
         public void StartNewRun()
@@ -180,9 +185,28 @@ namespace HexDemo
             _networkSession ??= HexNetworkSessionController.EnsureExists();
             _networkSession.SelectLocalProfession(profession);
             _networkSession.ConfirmLocalReady();
+            GameEvent.Send(HexGameEvents.ProfessionSelected, profession);
 
             if (_networkSession.IsOffline || _networkSession.CanHostStartRun())
                 StartNewRun(profession);
+        }
+
+        private void RegisterUpdate()
+        {
+            if (_updateRegistered)
+                return;
+
+            HexGameModule.Update.AddUpdateListener(UpdateMapPanInput);
+            _updateRegistered = true;
+        }
+
+        private void UnregisterUpdate()
+        {
+            if (!_updateRegistered)
+                return;
+
+            HexGameModule.Update.RemoveUpdateListener(UpdateMapPanInput);
+            _updateRegistered = false;
         }
 
         private string GetNetworkStatusText()

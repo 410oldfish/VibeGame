@@ -1,0 +1,9 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\Gilzoide.SqliteNet.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\Gilzoide.SqliteNet.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\Gilzoide.SqliteNet.pdb
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.dll
+F:\VibeGame\VibeGame\Temp\obj\Gilzoide.SqliteNet\Gilzoide.SqliteNet.pdb

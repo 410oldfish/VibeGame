@@ -256,7 +256,7 @@ namespace HexDemo
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void OnAfterSceneLoad()
         {
-            TryBootstrap();
+            HexGameEntry.EnsureExists().StartGameOnce();
         }
 
         private static HexAxialCoord FindClosestExistingCoord(HexGrid grid, HexAxialCoord desired)

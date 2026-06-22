@@ -1,0 +1,10 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Linq.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Linq.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Linq.pdb
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask..E223475B.Up2Date
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.dll
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Linq\UniTask.Linq.pdb

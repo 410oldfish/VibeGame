@@ -1,0 +1,408 @@
+{
+  "version": 3,
+  "targets": {
+    ".NETStandard,Version=v2.1": {
+      "Gilzoide.SqliteNet/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "compile": {
+          "bin/placeholder/Gilzoide.SqliteNet.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Gilzoide.SqliteNet.dll": {}
+        }
+      },
+      "SidekickCharacters/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "Gilzoide.SqliteNet": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/SidekickCharacters.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/SidekickCharacters.dll": {}
+        }
+      },
+      "SidekickCharacters.Editor/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "Gilzoide.SqliteNet": "1.0.0",
+          "SidekickCharacters": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/SidekickCharacters.Editor.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/SidekickCharacters.Editor.dll": {}
+        }
+      },
+      "TEngine.Runtime/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0",
+          "YooAsset": "1.0.0",
+          "YooAsset.MiniGame": "1.0.0",
+          "YooAsset.RuntimeExtension": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/TEngine.Runtime.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/TEngine.Runtime.dll": {}
+        }
+      },
+      "UniTask/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "YooAsset": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.dll": {}
+        }
+      },
+      "UniTask.Addressables/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.Addressables.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.Addressables.dll": {}
+        }
+      },
+      "UniTask.DOTween/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.DOTween.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.DOTween.dll": {}
+        }
+      },
+      "UniTask.Linq/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.Linq.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.Linq.dll": {}
+        }
+      },
+      "UniTask.TextMeshPro/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.TextMeshPro.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.TextMeshPro.dll": {}
+        }
+      },
+      "UniTask.YooAsset/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "UniTask": "1.0.0",
+          "YooAsset": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/UniTask.YooAsset.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/UniTask.YooAsset.dll": {}
+        }
+      },
+      "YooAsset/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "compile": {
+          "bin/placeholder/YooAsset.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/YooAsset.dll": {}
+        }
+      },
+      "YooAsset.Editor/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "YooAsset": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/YooAsset.Editor.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/YooAsset.Editor.dll": {}
+        }
+      },
+      "YooAsset.EditorExtension/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "YooAsset": "1.0.0",
+          "YooAsset.Editor": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/YooAsset.EditorExtension.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/YooAsset.EditorExtension.dll": {}
+        }
+      },
+      "YooAsset.MiniGame/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "YooAsset": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/YooAsset.MiniGame.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/YooAsset.MiniGame.dll": {}
+        }
+      },
+      "YooAsset.RuntimeExtension/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "dependencies": {
+          "YooAsset": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/YooAsset.RuntimeExtension.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/YooAsset.RuntimeExtension.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Gilzoide.SqliteNet/1.0.0": {
+      "type": "project",
+      "path": "Gilzoide.SqliteNet.csproj",
+      "msbuildProject": "Gilzoide.SqliteNet.csproj"
+    },
+    "SidekickCharacters/1.0.0": {
+      "type": "project",
+      "path": "SidekickCharacters.csproj",
+      "msbuildProject": "SidekickCharacters.csproj"
+    },
+    "SidekickCharacters.Editor/1.0.0": {
+      "type": "project",
+      "path": "SidekickCharacters.Editor.csproj",
+      "msbuildProject": "SidekickCharacters.Editor.csproj"
+    },
+    "TEngine.Runtime/1.0.0": {
+      "type": "project",
+      "path": "TEngine.Runtime.csproj",
+      "msbuildProject": "TEngine.Runtime.csproj"
+    },
+    "UniTask/1.0.0": {
+      "type": "project",
+      "path": "UniTask.csproj",
+      "msbuildProject": "UniTask.csproj"
+    },
+    "UniTask.Addressables/1.0.0": {
+      "type": "project",
+      "path": "UniTask.Addressables.csproj",
+      "msbuildProject": "UniTask.Addressables.csproj"
+    },
+    "UniTask.DOTween/1.0.0": {
+      "type": "project",
+      "path": "UniTask.DOTween.csproj",
+      "msbuildProject": "UniTask.DOTween.csproj"
+    },
+    "UniTask.Linq/1.0.0": {
+      "type": "project",
+      "path": "UniTask.Linq.csproj",
+      "msbuildProject": "UniTask.Linq.csproj"
+    },
+    "UniTask.TextMeshPro/1.0.0": {
+      "type": "project",
+      "path": "UniTask.TextMeshPro.csproj",
+      "msbuildProject": "UniTask.TextMeshPro.csproj"
+    },
+    "UniTask.YooAsset/1.0.0": {
+      "type": "project",
+      "path": "UniTask.YooAsset.csproj",
+      "msbuildProject": "UniTask.YooAsset.csproj"
+    },
+    "YooAsset/1.0.0": {
+      "type": "project",
+      "path": "YooAsset.csproj",
+      "msbuildProject": "YooAsset.csproj"
+    },
+    "YooAsset.Editor/1.0.0": {
+      "type": "project",
+      "path": "YooAsset.Editor.csproj",
+      "msbuildProject": "YooAsset.Editor.csproj"
+    },
+    "YooAsset.EditorExtension/1.0.0": {
+      "type": "project",
+      "path": "YooAsset.EditorExtension.csproj",
+      "msbuildProject": "YooAsset.EditorExtension.csproj"
+    },
+    "YooAsset.MiniGame/1.0.0": {
+      "type": "project",
+      "path": "YooAsset.MiniGame.csproj",
+      "msbuildProject": "YooAsset.MiniGame.csproj"
+    },
+    "YooAsset.RuntimeExtension/1.0.0": {
+      "type": "project",
+      "path": "YooAsset.RuntimeExtension.csproj",
+      "msbuildProject": "YooAsset.RuntimeExtension.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    ".NETStandard,Version=v2.1": [
+      "Gilzoide.SqliteNet >= 1.0.0",
+      "SidekickCharacters >= 1.0.0",
+      "SidekickCharacters.Editor >= 1.0.0",
+      "TEngine.Runtime >= 1.0.0",
+      "UniTask >= 1.0.0",
+      "UniTask.Addressables >= 1.0.0",
+      "UniTask.DOTween >= 1.0.0",
+      "UniTask.Linq >= 1.0.0",
+      "UniTask.TextMeshPro >= 1.0.0",
+      "UniTask.YooAsset >= 1.0.0",
+      "YooAsset >= 1.0.0",
+      "YooAsset.Editor >= 1.0.0",
+      "YooAsset.EditorExtension >= 1.0.0",
+      "YooAsset.MiniGame >= 1.0.0",
+      "YooAsset.RuntimeExtension >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\47230\\.nuget\\packages\\": {},
+    "D:\\VSShared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "F:\\VibeGame\\VibeGame\\Assembly-CSharp.csproj",
+      "projectName": "Assembly-CSharp",
+      "projectPath": "F:\\VibeGame\\VibeGame\\Assembly-CSharp.csproj",
+      "packagesPath": "C:\\Users\\47230\\.nuget\\packages\\",
+      "outputPath": "F:\\VibeGame\\VibeGame\\Temp\\obj\\Assembly-CSharp\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "D:\\VSShared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\47230\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "netstandard2.1"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "netstandard2.1": {
+          "targetAlias": "netstandard2.1",
+          "projectReferences": {
+            "F:\\VibeGame\\VibeGame\\Gilzoide.SqliteNet.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\Gilzoide.SqliteNet.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\SidekickCharacters.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\SidekickCharacters.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\SidekickCharacters.Editor.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\SidekickCharacters.Editor.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\TEngine.Runtime.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\TEngine.Runtime.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.Addressables.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.Addressables.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.DOTween.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.DOTween.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.Linq.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.Linq.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.TextMeshPro.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.TextMeshPro.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\UniTask.YooAsset.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\UniTask.YooAsset.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\YooAsset.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\YooAsset.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\YooAsset.Editor.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\YooAsset.Editor.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\YooAsset.EditorExtension.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\YooAsset.EditorExtension.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\YooAsset.MiniGame.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\YooAsset.MiniGame.csproj"
+            },
+            "F:\\VibeGame\\VibeGame\\YooAsset.RuntimeExtension.csproj": {
+              "projectPath": "F:\\VibeGame\\VibeGame\\YooAsset.RuntimeExtension.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "9.0.300"
+    },
+    "frameworks": {
+      "netstandard2.1": {
+        "targetAlias": "netstandard2.1",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302\\RuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

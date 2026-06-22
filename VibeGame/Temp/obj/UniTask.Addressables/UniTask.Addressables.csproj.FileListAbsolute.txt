@@ -1,0 +1,10 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Addressables.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Addressables.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.Addressables.pdb
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask..ACED574C.Up2Date
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.dll
+F:\VibeGame\VibeGame\Temp\obj\UniTask.Addressables\UniTask.Addressables.pdb

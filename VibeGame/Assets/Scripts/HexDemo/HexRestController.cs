@@ -1,4 +1,5 @@
 using TMPro;
+using TEngine;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,6 +16,7 @@ namespace HexDemo
         private TextMeshProUGUI _statusLabel;
         private bool _usedCampfire;
         private HexGrid _grid;
+        private bool _updateRegistered;
 
         public System.Action<bool, HexBattleUnit> RestFinished;
 
@@ -24,10 +26,16 @@ namespace HexDemo
             rayCamera = battleCamera != null ? battleCamera : Camera.main;
             _grid = Object.FindFirstObjectByType<HexGrid>();
             BuildCanvas();
+            RegisterUpdate();
             Refresh();
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            UnregisterUpdate();
+        }
+
+        private void Tick()
         {
             if (campfireObject == null || rayCamera == null || _usedCampfire)
                 return;
@@ -73,7 +81,11 @@ namespace HexDemo
 
             var leavePanel = CreatePanel(canvasGO.transform, "LeaveButton", new Vector2(-20f, 20f), new Vector2(220f, 84f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             var leaveButton = leavePanel.gameObject.AddComponent<Button>();
-            leaveButton.onClick.AddListener(() => RestFinished?.Invoke(true, _playerUnit));
+            leaveButton.onClick.AddListener(() =>
+            {
+                GameEvent.Send(HexGameEvents.RestFinished, true, _playerUnit);
+                RestFinished?.Invoke(true, _playerUnit);
+            });
             var leaveText = CreateText(leavePanel.transform, "LeaveLabel", Vector2.zero, new Vector2(220f, 84f), 28f);
             leaveText.alignment = TextAlignmentOptions.Center;
             leaveText.text = "Leave Rest";
@@ -120,6 +132,24 @@ namespace HexDemo
             text.color = Color.white;
             text.alignment = TextAlignmentOptions.TopLeft;
             return text;
+        }
+
+        private void RegisterUpdate()
+        {
+            if (_updateRegistered)
+                return;
+
+            HexGameModule.Update.AddUpdateListener(Tick);
+            _updateRegistered = true;
+        }
+
+        private void UnregisterUpdate()
+        {
+            if (!_updateRegistered)
+                return;
+
+            HexGameModule.Update.RemoveUpdateListener(Tick);
+            _updateRegistered = false;
         }
     }
 }

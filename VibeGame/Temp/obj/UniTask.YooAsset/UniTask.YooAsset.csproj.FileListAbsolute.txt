@@ -1,0 +1,10 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.YooAsset.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.YooAsset.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\UniTask.YooAsset.pdb
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask..E38895DB.Up2Date
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.dll
+F:\VibeGame\VibeGame\Temp\obj\UniTask.YooAsset\UniTask.YooAsset.pdb

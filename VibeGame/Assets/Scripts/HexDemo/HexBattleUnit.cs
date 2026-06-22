@@ -194,6 +194,12 @@ namespace HexDemo
         public void BeginTurn()
         {
             CanActThisTurn = true;
+            if (State.armor > 0)
+            {
+                State.armor = 0;
+                RefreshHealthBar();
+            }
+
             if (State.skillCooldown > 0)
                 State.skillCooldown = Mathf.Max(0, State.skillCooldown - 1);
 
@@ -1121,20 +1127,20 @@ namespace HexDemo
             _healthText.color = new Color(0.06f, 0.06f, 0.06f, 1f);
 
             var armorBadgeGO = new GameObject("ArmorBadge", typeof(RectTransform));
-            armorBadgeGO.transform.SetParent(canvasGO.transform, false);
+            armorBadgeGO.transform.SetParent(sliderGO.transform, false);
             var armorBadgeRect = armorBadgeGO.GetComponent<RectTransform>();
             armorBadgeRect.anchorMin = new Vector2(0f, 0.5f);
             armorBadgeRect.anchorMax = new Vector2(0f, 0.5f);
             armorBadgeRect.pivot = new Vector2(1f, 0.5f);
-            armorBadgeRect.anchoredPosition = new Vector2(-8f, 0f);
-            armorBadgeRect.sizeDelta = new Vector2(76f, 32f);
+            armorBadgeRect.anchoredPosition = new Vector2(-4f, 0f);
+            armorBadgeRect.sizeDelta = new Vector2(74f, 32f);
 
             var armorIconGO = new GameObject("ArmorIcon", typeof(RectTransform), typeof(Image));
             armorIconGO.transform.SetParent(armorBadgeGO.transform, false);
             var armorIconRect = armorIconGO.GetComponent<RectTransform>();
-            armorIconRect.anchorMin = new Vector2(0f, 0.5f);
-            armorIconRect.anchorMax = new Vector2(0f, 0.5f);
-            armorIconRect.pivot = new Vector2(0f, 0.5f);
+            armorIconRect.anchorMin = new Vector2(1f, 0.5f);
+            armorIconRect.anchorMax = new Vector2(1f, 0.5f);
+            armorIconRect.pivot = new Vector2(1f, 0.5f);
             armorIconRect.anchoredPosition = Vector2.zero;
             armorIconRect.sizeDelta = new Vector2(32f, 32f);
             _armorIcon = armorIconGO.GetComponent<Image>();
@@ -1145,16 +1151,16 @@ namespace HexDemo
             var armorTextGO = new GameObject("ArmorText", typeof(RectTransform), typeof(TextMeshProUGUI));
             armorTextGO.transform.SetParent(armorBadgeGO.transform, false);
             var armorTextRect = armorTextGO.GetComponent<RectTransform>();
-            armorTextRect.anchorMin = new Vector2(0f, 0.5f);
-            armorTextRect.anchorMax = new Vector2(0f, 0.5f);
-            armorTextRect.pivot = new Vector2(0f, 0.5f);
-            armorTextRect.anchoredPosition = new Vector2(34f, 0f);
-            armorTextRect.sizeDelta = new Vector2(40f, 28f);
+            armorTextRect.anchorMin = new Vector2(1f, 0.5f);
+            armorTextRect.anchorMax = new Vector2(1f, 0.5f);
+            armorTextRect.pivot = new Vector2(1f, 0.5f);
+            armorTextRect.anchoredPosition = new Vector2(-34f, 0f);
+            armorTextRect.sizeDelta = new Vector2(38f, 28f);
             _armorText = armorTextGO.GetComponent<TextMeshProUGUI>();
             HexTMPFontProvider.ApplyTo(_armorText);
             _armorText.fontSize = 12f;
             _armorText.fontStyle = FontStyles.Bold;
-            _armorText.alignment = TextAlignmentOptions.Left;
+            _armorText.alignment = TextAlignmentOptions.Right;
             _armorText.color = new Color(0.08f, 0.18f, 0.3f, 1f);
 
             var statusGridGO = new GameObject("StatusGrid", typeof(RectTransform), typeof(GridLayoutGroup));

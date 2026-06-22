@@ -2,10 +2,19 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using TEngine;
 using UnityEngine;
 
 namespace HexDemo
 {
+    public sealed class HexCardPlayLogEntry
+    {
+        public string turnOwner;
+        public string sourceName;
+        public string targetName;
+        public string cardName;
+    }
+
     public sealed class HexBattleController : MonoBehaviour
     {
         private sealed class ForcedMovementResult
@@ -40,6 +49,8 @@ namespace HexDemo
         private bool _pendingEndTurnRequest;
         private LineRenderer _targetArrow;
         private bool _battleFinished;
+        private bool _updateRegistered;
+        private readonly List<HexCardPlayLogEntry> _playLog = new();
 
         public System.Action<bool, int, HexBattleUnit> BattleFinished;
 
@@ -71,6 +82,8 @@ namespace HexDemo
             _ui = uiGO.AddComponent<HexBattleUI>();
             _ui.Initialize(this);
             EnsureTargetArrow();
+            RegisterUpdate();
+            GameEvent.Send(HexGameEvents.BattleStarted, this);
 
             BeginTurn(HexBattleFaction.Player);
         }
@@ -82,13 +95,14 @@ namespace HexDemo
             _draggedCard = null;
             _hoveredTile = null;
             BattleFinished = null;
+            UnregisterUpdate();
             if (_targetArrow != null)
                 Destroy(_targetArrow.gameObject);
             if (_ui != null)
                 Destroy(_ui.gameObject);
         }
 
-        private void Update()
+        private void Tick()
         {
             if (grid == null || rayCamera == null)
                 return;
@@ -98,7 +112,7 @@ namespace HexDemo
             if (_busy || _draggedCard != null || _currentTurn != HexBattleFaction.Player)
                 return;
 
-            if (Input.GetMouseButtonDown(0))
+            if (Input.GetMouseButtonDown(0) && !TryHandleEnemyHandClick())
                 TryHandlePlayerMoveClick();
         }
 
@@ -115,6 +129,19 @@ namespace HexDemo
         public IReadOnlyList<HexCardInstance> GetLocalDiscardPile()
         {
             return _playerUnit != null ? _playerUnit.Deck.DiscardPile : System.Array.Empty<HexCardInstance>();
+        }
+
+        public IReadOnlyList<HexCardPlayLogEntry> GetPlayLog()
+        {
+            return _playLog;
+        }
+
+        public IReadOnlyList<HexCardInstance> GetEnemyHand(HexBattleUnit enemy)
+        {
+            if (enemy == null || enemy.State == null || enemy.State.faction != HexBattleFaction.Enemy)
+                return System.Array.Empty<HexCardInstance>();
+
+            return enemy.Deck.Hand;
         }
 
         public int GetLocalCardCost(HexCardInstance card)
@@ -315,6 +342,21 @@ namespace HexDemo
             StartCoroutine(MoveUnitRoutine(_playerUnit, path, moveCost));
         }
 
+        private bool TryHandleEnemyHandClick()
+        {
+            if (_ui != null && _ui.IsBlockingWorldClick())
+                return true;
+
+            if (!TryGetHoveredUnit(out var unit) || unit == null || unit.State.faction != HexBattleFaction.Enemy)
+            {
+                _ui?.CloseEnemyHandPopup();
+                return false;
+            }
+
+            _ui?.OpenEnemyHandPopup(unit, Input.mousePosition);
+            return true;
+        }
+
         private bool TryPlayDraggedCard(Vector2 screenPosition)
         {
             if (_draggedCard == null || _draggedCard.definition == null || _draggedCard.definition.isUnplayable || !_playerUnit.CanPay(_draggedCard) || _busy)
@@ -431,9 +473,11 @@ namespace HexDemo
             source.SpendEnergy(energyCost);
             bool exhaustCard = card.exhaustWhenPlayed || HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Exhaust);
             source.Deck.DiscardFromHand(card, exhaustCard);
+            RecordCardPlay(source, target, card, targetedCoord);
+            _ui?.ShowPlayedCard(source, card);
             if (source.State.bleed > 0)
             {
-                source.ApplyDamage(source.State.bleed);
+                ApplyDamageWithFeedback(source, source.State.bleed, source);
                 source.RefreshLabel();
                 _ui.Refresh();
                 if (!source.IsAlive)
@@ -454,9 +498,9 @@ namespace HexDemo
             }
 
             if (source.State.armorOnAttackCardThisTurn > 0 && card.definition.cardType == HexCardType.Attack)
-                source.GainArmor(source.State.armorOnAttackCardThisTurn);
+                GainArmorWithFeedback(source, source.State.armorOnAttackCardThisTurn);
             if (source.State.armorOnSkillCard > 0 && card.definition.cardType == HexCardType.Skill)
-                source.GainArmor(source.State.armorOnSkillCard);
+                GainArmorWithFeedback(source, source.State.armorOnSkillCard);
 
             ApplyDruidTransformFromCard(source, card.definition);
 
@@ -518,14 +562,14 @@ namespace HexDemo
                             continue;
                         }
                         int attackDamage = GetModifiedDamage(source, target, card.definition.amount + Mathf.Max(0, source.State.strength));
-                        target.ApplyDamage(attackDamage);
+                        ApplyDamageWithFeedback(target, attackDamage, source);
                         source.State.damageDealtThisTurn += attackDamage;
                         if (target.IsAlive)
                         {
                             target.PlayHitAnimation();
                             yield return new WaitForSeconds(Mathf.Max(0.08f, target.GetHitDuration() * 0.85f));
                             if (target.State.thorns > 0 && source.IsAlive)
-                                source.ApplyDamage(target.State.thorns);
+                                ApplyDamageWithFeedback(source, target.State.thorns, target);
                             yield return ApplyWeaponAttackEffectsRoutine(source, target);
                             yield return ApplyKeywordEffectsRoutine(source, target, card);
                         }
@@ -539,7 +583,7 @@ namespace HexDemo
                     if (CanConvertArmorCardToPlantHealing(source, target, card.definition))
                         target.Heal(card.definition.amount);
                     else
-                        source.GainArmor(card.definition.amount);
+                        GainArmorWithFeedback(source, card.definition.amount);
                     break;
             }
 
@@ -841,7 +885,7 @@ namespace HexDemo
                 if (unit == null || unit.State.faction == source.State.faction || !unit.IsAlive)
                     continue;
 
-                unit.ApplyDamage(GetModifiedDamage(source, unit, 3));
+                ApplyDamageWithFeedback(unit, GetModifiedDamage(source, unit, 3), source);
                 if (unit.IsAlive)
                     unit.PlayHitAnimation();
                 else
@@ -1217,7 +1261,26 @@ namespace HexDemo
             yield return new WaitForSeconds(0.25f);
             _ui.Refresh();
             int goldReward = playerWon && awardVictoryGold ? victoryGoldAmount : 0;
+            GameEvent.Send(HexGameEvents.BattleFinished, playerWon, goldReward, _playerUnit);
             BattleFinished?.Invoke(playerWon, goldReward, _playerUnit);
+        }
+
+        private void RegisterUpdate()
+        {
+            if (_updateRegistered)
+                return;
+
+            HexGameModule.Update.AddUpdateListener(Tick);
+            _updateRegistered = true;
+        }
+
+        private void UnregisterUpdate()
+        {
+            if (!_updateRegistered)
+                return;
+
+            HexGameModule.Update.RemoveUpdateListener(Tick);
+            _updateRegistered = false;
         }
 
         private IEnumerator AutoPassStunnedPlayerTurn()
@@ -1362,21 +1425,21 @@ namespace HexDemo
                     setHandled?.Invoke(true);
                     yield break;
                 case "C_03_005":
-                    source.GainArmor(4);
+                    GainArmorWithFeedback(source, 4);
                     source.State.druidBonusArmorOnNextTransform += 3;
                     setHandled?.Invoke(true);
                     yield break;
                 case "C_03_006":
-                    source.GainArmor(3);
+                    GainArmorWithFeedback(source, 3);
                     setHandled?.Invoke(true);
                     yield break;
                 case "C_03_007":
-                    source.GainArmor(4);
+                    GainArmorWithFeedback(source, 4);
                     setHandled?.Invoke(true);
                     yield break;
                 case "C_03_010":
                     bool wasMammoth = source.State.druidForm == HexDruidFormType.Mammoth;
-                    source.GainArmor(6);
+                    GainArmorWithFeedback(source, 6);
                     source.GainMomentum(1, 2);
                     if (wasMammoth)
                         source.GainStrength(1);
@@ -1421,7 +1484,7 @@ namespace HexDemo
                     yield return ResolveRepeatedByTargetHandRoutine(source, target, 7);
                     break;
                 case "棒击":
-                    yield return ResolveDirectAttackRoutine(source, target, 8, onHit: dealt => source.GainArmor(dealt), addDaze: 1);
+                    yield return ResolveDirectAttackRoutine(source, target, 8, onHit: dealt => GainArmorWithFeedback(source, dealt), addDaze: 1);
                     break;
                 case "压制":
                     yield return ResolveDirectAttackRoutine(source, target, 13, weak: 2);
@@ -1445,7 +1508,7 @@ namespace HexDemo
                     source.State.armorOnAttackCardThisTurn += 3;
                     break;
                 case "武装":
-                    source.GainArmor(4);
+                    GainArmorWithFeedback(source, 4);
                     UpgradeRandomCard(source);
                     break;
                 case "防御姿态":
@@ -1453,7 +1516,7 @@ namespace HexDemo
                     source.GainToughness(6);
                     break;
                 case "整备":
-                    source.GainArmor(8);
+                    GainArmorWithFeedback(source, 8);
                     source.State.skillCooldown = 0;
                     DrawCardsForUnit(source, 1);
                     break;
@@ -1461,8 +1524,8 @@ namespace HexDemo
                     DiscountSkillCardsInHand(source, -1, true);
                     break;
                 case "鲜血护盾":
-                    source.ApplyDamage(3);
-                    source.GainArmor(15);
+                    ApplyDamageWithFeedback(source, 3, source);
+                    GainArmorWithFeedback(source, 15);
                     break;
                 case "百变护甲":
                     source.State.armorOnSkillCard += 4;
@@ -1470,18 +1533,18 @@ namespace HexDemo
                 case "退避":
                     ExhaustRandomHandCard(source);
                     source.State.currentMovePoints += 2;
-                    source.GainArmor(8);
+                    GainArmorWithFeedback(source, 8);
                     break;
                 case "燃烧契约":
                     source.ApplyBurn(1);
                     DrawCardsForUnit(source, 3);
                     break;
                 case "放血":
-                    source.ApplyDamage(source.Deck.Hand.Count);
+                    ApplyDamageWithFeedback(source, source.Deck.Hand.Count, source);
                     source.State.energy += source.Deck.Hand.Count;
                     break;
                 case "嘲讽":
-                    source.GainArmor(8);
+                    GainArmorWithFeedback(source, 8);
                     break;
                 case "钝击":
                     yield return ResolveDirectAttackRoutine(source, target, 18, addDaze: 3);
@@ -1524,7 +1587,7 @@ namespace HexDemo
                     source.State.currentMovePoints += 1;
                     break;
                 case "无惧苦痛":
-                    source.GainArmor(energySpent);
+                    GainArmorWithFeedback(source, energySpent);
                     break;
                 case "愤怒":
                     yield return ResolveDirectAttackRoutine(source, target, source.Deck.Hand.Count(instance => instance.definition.cardType == HexCardType.Attack));
@@ -1566,7 +1629,7 @@ namespace HexDemo
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
-                enemy.ApplyDamage(GetModifiedDamage(source, enemy, 6));
+                ApplyDamageWithFeedback(enemy, GetModifiedDamage(source, enemy, 6), source);
                 enemy.ApplyBleed(1);
                 if (enemy.IsAlive)
                     enemy.PlayHitAnimation();
@@ -2035,7 +2098,7 @@ namespace HexDemo
             unit.State.rooted = form == HexDruidFormType.Rafflesia;
             if (unit.State.druidBonusArmorOnNextTransform > 0)
             {
-                unit.GainArmor(unit.State.druidBonusArmorOnNextTransform);
+                GainArmorWithFeedback(unit, unit.State.druidBonusArmorOnNextTransform);
                 unit.State.druidBonusArmorOnNextTransform = 0;
             }
         }
@@ -2062,7 +2125,7 @@ namespace HexDemo
                 case HexDruidFormType.Rafflesia:
                     if (unit.State.currentMovePoints > 0)
                     {
-                        unit.GainArmor(unit.State.currentMovePoints);
+                        GainArmorWithFeedback(unit, unit.State.currentMovePoints);
                         unit.State.currentMovePoints = 0;
                     }
                     break;
@@ -2284,6 +2347,62 @@ namespace HexDemo
             return total;
         }
 
+        private void RecordCardPlay(HexBattleUnit source, HexBattleUnit target, HexCardInstance card, HexAxialCoord targetCoord)
+        {
+            if (source == null || card?.definition == null)
+                return;
+
+            _playLog.Add(new HexCardPlayLogEntry
+            {
+                turnOwner = _currentTurn == HexBattleFaction.Player ? "玩家回合" : "敌人回合",
+                sourceName = GetUnitDisplayName(source),
+                targetName = target != null ? GetUnitDisplayName(target) : $"格子({targetCoord.q},{targetCoord.r})",
+                cardName = card.definition.displayName,
+            });
+        }
+
+        private void GainArmorWithFeedback(HexBattleUnit target, int amount)
+        {
+            if (target == null || amount <= 0)
+                return;
+
+            int beforeArmor = target.State.armor;
+            target.GainArmor(amount);
+            int gainedArmor = Mathf.Max(0, target.State.armor - beforeArmor);
+            if (gainedArmor > 0)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.Armor, gainedArmor);
+        }
+
+        private int ApplyDamageWithFeedback(HexBattleUnit target, int amount, HexBattleUnit source)
+        {
+            if (target == null || amount <= 0)
+                return 0;
+
+            int beforeArmor = target.State.armor;
+            int beforeHealth = target.State.currentHealth;
+            int healthLost = target.ApplyDamage(amount);
+            int armorLost = Mathf.Max(0, beforeArmor - target.State.armor);
+            if (armorLost > 0)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.ArmorDamage, armorLost);
+            if (healthLost > 0)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.HealthDamage, healthLost);
+            else if (armorLost <= 0 && beforeHealth == target.State.currentHealth)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.Blocked, 0);
+
+            return healthLost;
+        }
+
+        private static string GetUnitDisplayName(HexBattleUnit unit)
+        {
+            if (unit?.State == null)
+                return "未知目标";
+
+            if (!string.IsNullOrWhiteSpace(unit.State.displayName))
+                return unit.State.displayName;
+
+            return unit.State.faction == HexBattleFaction.Player ? "玩家" : "敌人";
+        }
+
         private void DrawCardsForUnit(HexBattleUnit unit, int count, bool ignoreDrawBlock = false)
         {
             if (unit == null || count <= 0)
@@ -2309,7 +2428,7 @@ namespace HexDemo
             if (unit.State.drawOnExhaust)
                 DrawCardsForUnit(unit, 1);
             if (unit.State.armorOnExhaustCost > 0)
-                unit.GainArmor(exhaustedCost * unit.State.armorOnExhaustCost);
+                GainArmorWithFeedback(unit, exhaustedCost * unit.State.armorOnExhaustCost);
         }
 
         private void ApplyDamageToUnit(HexBattleUnit target, int amount, HexBattleUnit source)
@@ -2318,7 +2437,7 @@ namespace HexDemo
                 return;
 
             int beforeHealth = target.State.currentHealth;
-            target.ApplyDamage(amount);
+            ApplyDamageWithFeedback(target, amount, source);
             int healthLost = Mathf.Max(0, beforeHealth - target.State.currentHealth);
             if (healthLost > 0 && target == source && target.State.gainStrengthOnSelfDamage)
                 target.GainStrength(1);
@@ -2351,7 +2470,7 @@ namespace HexDemo
             if (target.State.block > 0)
                 amount = Mathf.Max(0, amount - target.State.block);
 
-            target.ApplyDamage(amount);
+            ApplyDamageWithFeedback(target, amount, source);
         }
 
         private bool CanAttackTarget(HexBattleUnit source, HexBattleUnit candidate)

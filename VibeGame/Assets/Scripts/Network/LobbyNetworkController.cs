@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using HexDemo;
+using TEngine;
 using UnityEngine;
 
 #if HEX_MIRROR_PRESENT
@@ -76,12 +77,14 @@ namespace HexDemo.Network
             var player = GetOrCreatePlayer(playerId);
             player.profession = payload.profession;
             player.hasSelectedProfession = true;
+            GameEvent.Send(HexGameEvents.LobbyChanged, this);
         }
 
         private void ApplyReady(string playerId, bool ready)
         {
             var player = GetOrCreatePlayer(playerId);
             player.isReady = ready && player.hasSelectedProfession;
+            GameEvent.Send(HexGameEvents.LobbyChanged, this);
         }
 
         private HexLobbyPlayerMessage GetOrCreatePlayer(string playerId)
@@ -115,6 +118,7 @@ namespace HexDemo.Network
                 return;
 
             _players.AddRange(snapshot.players);
+            GameEvent.Send(HexGameEvents.LobbyChanged, this);
         }
 
         [System.Serializable]

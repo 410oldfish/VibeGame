@@ -1,0 +1,10 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\SidekickCharacters.Editor.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\SidekickCharacters.Editor.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\SidekickCharacters.Editor.pdb
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\Sidekick.361EA7F9.Up2Date
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.dll
+F:\VibeGame\VibeGame\Temp\obj\SidekickCharacters.Editor\SidekickCharacters.Editor.pdb

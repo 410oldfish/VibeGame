@@ -1,4 +1,5 @@
 using HexDemo;
+using TEngine;
 using UnityEngine;
 
 #if HEX_MIRROR_PRESENT
@@ -79,6 +80,7 @@ namespace HexDemo.Network
 
         private void ApplyBattleEvents(string eventsJson)
         {
+            GameEvent.Send(HexGameEvents.BattleNetworkEvents, eventsJson);
             Debug.Log($"BattleEvents {eventsJson}");
         }
 

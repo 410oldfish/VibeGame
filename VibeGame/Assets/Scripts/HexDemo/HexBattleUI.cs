@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -6,6 +7,14 @@ using UnityEngine.UI;
 
 namespace HexDemo
 {
+    public enum HexFloatingFeedbackKind
+    {
+        Armor,
+        ArmorDamage,
+        HealthDamage,
+        Blocked,
+    }
+
     internal static class HexTMPFontProvider
     {
         private static TMP_FontAsset s_runtimeFont;
@@ -96,11 +105,18 @@ namespace HexDemo
         private Button _hammerSkillButton;
         private Button _drawPileButton;
         private Button _discardPileButton;
+        private Button _playLogButton;
         private TextMeshProUGUI _drawPileLabel;
         private TextMeshProUGUI _discardPileLabel;
         private RectTransform _pileModal;
         private TextMeshProUGUI _pileModalTitle;
         private RectTransform _pileModalContent;
+        private RectTransform _enemyHandOverlay;
+        private RectTransform _enemyHandPopup;
+        private TextMeshProUGUI _enemyHandTitle;
+        private RectTransform _enemyHandContent;
+        private RectTransform _playLogModal;
+        private RectTransform _playLogContent;
         private Canvas _canvas;
         private const float CardWidth = 182f;
         private const float CardHeight = 240f;
@@ -232,7 +248,16 @@ namespace HexDemo
             _discardPileLabel = CreateTMP(discardPanel.transform, "DiscardLabel", new Vector2(0f, 0f), new Vector2(170f, 112f), 24, FontStyles.Bold);
             _discardPileLabel.alignment = TextAlignmentOptions.Center;
 
+            var playLogPanel = CreatePanel(canvasGO.transform, "PlayLog", new Vector2(20f, 256f), new Vector2(170f, 74f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            _playLogButton = playLogPanel.gameObject.AddComponent<Button>();
+            _playLogButton.onClick.AddListener(OpenPlayLogView);
+            var playLogLabel = CreateTMP(playLogPanel.transform, "PlayLogLabel", new Vector2(0f, 0f), new Vector2(170f, 74f), 22, FontStyles.Bold);
+            playLogLabel.alignment = TextAlignmentOptions.Center;
+            playLogLabel.text = "Replay";
+
             BuildPileModal(canvasGO.transform);
+            BuildEnemyHandPopup(canvasGO.transform);
+            BuildPlayLogModal(canvasGO.transform);
         }
 
         private static void CreateCardFace(Transform parent, HexCardInstance card, int displayedCost)
@@ -321,6 +346,316 @@ namespace HexDemo
 
             var eventSystemGO = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
             Object.DontDestroyOnLoad(eventSystemGO);
+        }
+
+        public bool IsBlockingWorldClick()
+        {
+            return (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf) ||
+                   (_pileModal != null && _pileModal.gameObject.activeSelf) ||
+                   (_playLogModal != null && _playLogModal.gameObject.activeSelf);
+        }
+
+        public void OpenEnemyHandPopup(HexBattleUnit enemy, Vector2 screenPosition)
+        {
+            if (_enemyHandOverlay == null || _enemyHandPopup == null || _controller == null || enemy == null)
+                return;
+
+            _enemyHandOverlay.gameObject.SetActive(true);
+            _enemyHandTitle.text = $"{GetUnitDisplayName(enemy)} Hand";
+            ClearChildren(_enemyHandContent);
+
+            var cards = _controller.GetEnemyHand(enemy);
+            if (cards == null || cards.Count == 0)
+            {
+                var empty = CreateTMP(_enemyHandContent, "Empty", Vector2.zero, new Vector2(540f, 220f), 26, FontStyles.Bold);
+                empty.alignment = TextAlignmentOptions.Center;
+                empty.text = "(Empty)";
+            }
+            else
+            {
+                for (int i = 0; i < cards.Count; i++)
+                    CreatePileCardView(_enemyHandContent, cards[i]);
+            }
+
+            var canvasRect = _canvas.transform as RectTransform;
+            if (canvasRect != null &&
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screenPosition, null, out var localPoint))
+            {
+                Vector2 size = _enemyHandPopup.sizeDelta;
+                Rect rect = canvasRect.rect;
+                localPoint.x = Mathf.Clamp(localPoint.x + 18f, rect.xMin + 16f, rect.xMax - size.x - 16f);
+                localPoint.y = Mathf.Clamp(localPoint.y - 18f, rect.yMin + size.y + 16f, rect.yMax - 16f);
+                _enemyHandPopup.anchoredPosition = localPoint;
+            }
+        }
+
+        public void CloseEnemyHandPopup()
+        {
+            if (_enemyHandOverlay != null)
+                _enemyHandOverlay.gameObject.SetActive(false);
+        }
+
+        public void ShowFloatingCombatText(HexBattleUnit unit, HexFloatingFeedbackKind kind, int amount)
+        {
+            if (_canvas == null || unit == null)
+                return;
+
+            StartCoroutine(AnimateFloatingCombatText(unit, kind, amount));
+        }
+
+        public void ShowPlayedCard(HexBattleUnit source, HexCardInstance card)
+        {
+            if (_canvas == null || source == null || card?.definition == null)
+                return;
+
+            StartCoroutine(AnimatePlayedCard(source, card));
+        }
+
+        private IEnumerator AnimateFloatingCombatText(HexBattleUnit unit, HexFloatingFeedbackKind kind, int amount)
+        {
+            var root = new GameObject("FloatingCombatText", typeof(RectTransform), typeof(CanvasGroup), typeof(HorizontalLayoutGroup));
+            root.transform.SetParent(_canvas.transform, false);
+            var rect = root.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(176f, 48f);
+            rect.anchoredPosition = WorldToCanvasPosition(unit.GetTargetPoint() + Vector3.up * 0.35f);
+
+            var layout = root.GetComponent<HorizontalLayoutGroup>();
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlHeight = false;
+            layout.childControlWidth = false;
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.spacing = 8f;
+
+            Color iconColor;
+            string iconText;
+            string valueText;
+            switch (kind)
+            {
+                case HexFloatingFeedbackKind.Armor:
+                    iconText = "盾";
+                    valueText = $"+{amount}";
+                    iconColor = new Color(0.3f, 0.62f, 1f, 0.95f);
+                    break;
+                case HexFloatingFeedbackKind.ArmorDamage:
+                    iconText = "盾";
+                    valueText = $"-{amount}";
+                    iconColor = new Color(0.34f, 0.55f, 0.82f, 0.95f);
+                    break;
+                case HexFloatingFeedbackKind.Blocked:
+                    iconText = "盾";
+                    valueText = "0";
+                    iconColor = new Color(0.7f, 0.74f, 0.82f, 0.95f);
+                    break;
+                default:
+                    iconText = "HP";
+                    valueText = $"-{amount}";
+                    iconColor = new Color(0.88f, 0.22f, 0.18f, 0.95f);
+                    break;
+            }
+
+            var iconPanel = CreatePanel(root.transform, "Icon", Vector2.zero, new Vector2(42f, 42f), Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f));
+            iconPanel.GetComponent<Image>().color = iconColor;
+            var iconLabel = CreateTMP(iconPanel.transform, "IconLabel", Vector2.zero, new Vector2(42f, 42f), 18, FontStyles.Bold);
+            iconLabel.alignment = TextAlignmentOptions.Center;
+            iconLabel.text = iconText;
+
+            var value = CreateTMP(root.transform, "Value", Vector2.zero, new Vector2(96f, 44f), 34, FontStyles.Bold);
+            value.alignment = TextAlignmentOptions.MidlineLeft;
+            value.color = kind == HexFloatingFeedbackKind.HealthDamage
+                ? new Color(1f, 0.34f, 0.28f, 1f)
+                : Color.white;
+            value.text = valueText;
+
+            yield return AnimateCanvasGroup(root.GetComponent<CanvasGroup>(), rect, Vector2.up * 74f, 0.85f);
+        }
+
+        private IEnumerator AnimatePlayedCard(HexBattleUnit source, HexCardInstance card)
+        {
+            var cardGO = new GameObject("PlayedCard", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+            cardGO.transform.SetParent(_canvas.transform, false);
+            var rect = cardGO.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(CardWidth, CardHeight);
+            rect.localScale = Vector3.one * 0.62f;
+            rect.anchoredPosition = WorldToCanvasPosition(source.GetTargetPoint()) + new Vector2(92f, 4f);
+
+            var image = cardGO.GetComponent<Image>();
+            image.color = Color.Lerp(card.definition.color, Color.black, 0.12f);
+            image.raycastTarget = false;
+            CreateCardFace(cardGO.transform, card, card.definition.energyCost < 0 ? 0 : card.definition.energyCost);
+
+            yield return AnimateCanvasGroup(cardGO.GetComponent<CanvasGroup>(), rect, Vector2.up * 92f, 1.05f);
+        }
+
+        private IEnumerator AnimateCanvasGroup(CanvasGroup group, RectTransform rect, Vector2 offset, float duration)
+        {
+            Vector2 start = rect.anchoredPosition;
+            for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+            {
+                float t = Mathf.Clamp01(elapsed / duration);
+                rect.anchoredPosition = Vector2.Lerp(start, start + offset, t);
+                group.alpha = 1f - Mathf.SmoothStep(0f, 1f, t);
+                yield return null;
+            }
+
+            Destroy(rect.gameObject);
+        }
+
+        private Vector2 WorldToCanvasPosition(Vector3 worldPoint)
+        {
+            Camera camera = _controller != null && _controller.rayCamera != null ? _controller.rayCamera : Camera.main;
+            Vector2 screenPoint = camera != null ? RectTransformUtility.WorldToScreenPoint(camera, worldPoint) : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            var canvasRect = _canvas.transform as RectTransform;
+            if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screenPoint, null, out var localPoint))
+                return localPoint;
+
+            return Vector2.zero;
+        }
+
+        private void BuildEnemyHandPopup(Transform parent)
+        {
+            _enemyHandOverlay = new GameObject("EnemyHandOverlay", typeof(RectTransform), typeof(Image), typeof(Button)).GetComponent<RectTransform>();
+            _enemyHandOverlay.SetParent(parent, false);
+            _enemyHandOverlay.anchorMin = Vector2.zero;
+            _enemyHandOverlay.anchorMax = Vector2.one;
+            _enemyHandOverlay.offsetMin = Vector2.zero;
+            _enemyHandOverlay.offsetMax = Vector2.zero;
+            _enemyHandOverlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.01f);
+            _enemyHandOverlay.GetComponent<Button>().onClick.AddListener(CloseEnemyHandPopup);
+            _enemyHandOverlay.gameObject.SetActive(false);
+
+            _enemyHandPopup = CreatePanel(_enemyHandOverlay, "EnemyHandPopup", Vector2.zero, new Vector2(660f, 330f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 1f));
+            _enemyHandPopup.gameObject.AddComponent<Button>();
+            _enemyHandTitle = CreateTMP(_enemyHandPopup.transform, "Title", new Vector2(22f, -16f), new Vector2(600f, 34f), 26, FontStyles.Bold);
+
+            _enemyHandContent = new GameObject("Content", typeof(RectTransform), typeof(HorizontalLayoutGroup)).GetComponent<RectTransform>();
+            _enemyHandContent.SetParent(_enemyHandPopup.transform, false);
+            _enemyHandContent.anchorMin = new Vector2(0f, 1f);
+            _enemyHandContent.anchorMax = new Vector2(0f, 1f);
+            _enemyHandContent.pivot = new Vector2(0f, 1f);
+            _enemyHandContent.anchoredPosition = new Vector2(22f, -66f);
+            _enemyHandContent.sizeDelta = new Vector2(616f, 244f);
+
+            var layout = _enemyHandContent.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 16f;
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.childControlHeight = false;
+            layout.childControlWidth = false;
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = false;
+        }
+
+        private void BuildPlayLogModal(Transform parent)
+        {
+            _playLogModal = CreatePanel(parent, "PlayLogModal", Vector2.zero, new Vector2(920f, 640f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            _playLogModal.gameObject.SetActive(false);
+            var title = CreateTMP(_playLogModal.transform, "Title", new Vector2(32f, -24f), new Vector2(720f, 40f), 30, FontStyles.Bold);
+            title.text = "Play Replay";
+
+            var scrollRoot = new GameObject("ScrollRoot", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+            scrollRoot.transform.SetParent(_playLogModal.transform, false);
+            var scrollRectTransform = scrollRoot.GetComponent<RectTransform>();
+            scrollRectTransform.anchorMin = new Vector2(0.5f, 1f);
+            scrollRectTransform.anchorMax = new Vector2(0.5f, 1f);
+            scrollRectTransform.pivot = new Vector2(0.5f, 1f);
+            scrollRectTransform.anchoredPosition = new Vector2(0f, -82f);
+            scrollRectTransform.sizeDelta = new Vector2(840f, 450f);
+            scrollRoot.GetComponent<Image>().color = new Color(0.06f, 0.08f, 0.12f, 0.72f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
+            viewport.transform.SetParent(scrollRoot.transform, false);
+            var viewportRect = viewport.GetComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = Vector2.zero;
+            viewportRect.offsetMax = Vector2.zero;
+            viewport.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
+            viewport.GetComponent<Mask>().showMaskGraphic = false;
+
+            _playLogContent = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter)).GetComponent<RectTransform>();
+            _playLogContent.SetParent(viewport.transform, false);
+            _playLogContent.anchorMin = new Vector2(0f, 1f);
+            _playLogContent.anchorMax = new Vector2(1f, 1f);
+            _playLogContent.pivot = new Vector2(0.5f, 1f);
+            _playLogContent.anchoredPosition = Vector2.zero;
+            _playLogContent.sizeDelta = Vector2.zero;
+
+            var layout = _playLogContent.GetComponent<VerticalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.padding = new RectOffset(14, 14, 14, 14);
+            layout.childControlHeight = false;
+            layout.childControlWidth = true;
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = true;
+
+            var fitter = _playLogContent.GetComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var scrollRect = scrollRoot.GetComponent<ScrollRect>();
+            scrollRect.viewport = viewportRect;
+            scrollRect.content = _playLogContent;
+            scrollRect.horizontal = false;
+
+            var closePanel = CreatePanel(_playLogModal.transform, "CloseButton", new Vector2(0f, 28f), new Vector2(180f, 64f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            var closeButton = closePanel.gameObject.AddComponent<Button>();
+            closeButton.onClick.AddListener(() => _playLogModal.gameObject.SetActive(false));
+            var closeText = CreateTMP(closePanel.transform, "CloseLabel", new Vector2(0f, 0f), new Vector2(180f, 64f), 24, FontStyles.Bold);
+            closeText.alignment = TextAlignmentOptions.Center;
+            closeText.text = "Close";
+        }
+
+        private void OpenPlayLogView()
+        {
+            if (_playLogModal == null || _controller == null)
+                return;
+
+            _playLogModal.gameObject.SetActive(true);
+            ClearChildren(_playLogContent);
+            var records = _controller.GetPlayLog();
+            if (records == null || records.Count == 0)
+            {
+                CreatePlayLogLine("No cards played yet.");
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                var record = records[i];
+                CreatePlayLogLine($"{i + 1}. {record.turnOwner}  {record.sourceName} -> {record.targetName}  {record.cardName}");
+            }
+        }
+
+        private void CreatePlayLogLine(string text)
+        {
+            var line = CreateTMP(_playLogContent, "Record", Vector2.zero, new Vector2(790f, 42f), 22, FontStyles.Normal);
+            line.alignment = TextAlignmentOptions.MidlineLeft;
+            line.text = text;
+        }
+
+        private static void ClearChildren(Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            for (int i = parent.childCount - 1; i >= 0; i--)
+                Destroy(parent.GetChild(i).gameObject);
+        }
+
+        private static string GetUnitDisplayName(HexBattleUnit unit)
+        {
+            if (unit?.State == null)
+                return "Unknown";
+
+            if (!string.IsNullOrWhiteSpace(unit.State.displayName))
+                return unit.State.displayName;
+
+            return unit.State.faction == HexBattleFaction.Player ? "Player" : "Enemy";
         }
 
         private void BuildPileModal(Transform parent)

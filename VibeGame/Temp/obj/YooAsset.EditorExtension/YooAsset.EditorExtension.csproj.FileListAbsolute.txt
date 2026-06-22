@@ -1,0 +1,10 @@
+F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.EditorExtension.deps.json
+F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.EditorExtension.dll
+F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.EditorExtension.pdb
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.csproj.AssemblyReference.cache
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.GeneratedMSBuildEditorConfig.editorconfig
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.csproj.CoreCompileInputs.cache
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.sourcelink.json
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.9861F8D0.Up2Date
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.dll
+F:\VibeGame\VibeGame\Temp\obj\YooAsset.EditorExtension\YooAsset.EditorExtension.pdb
