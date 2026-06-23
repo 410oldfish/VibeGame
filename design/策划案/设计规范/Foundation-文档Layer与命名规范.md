@@ -45,6 +45,8 @@
   战士/
     Feature-战士.md
     Feature-战士武器系统.md
+    Feature-战士事件节点.md
+    Feature-战士过渡卡牌.md
     Feature-战士体系-*.md
     Feature-战士体系联动.md
   骑士/
