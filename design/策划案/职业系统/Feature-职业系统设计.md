@@ -106,7 +106,7 @@
 | --- | --- | --- |
 | Feature | 本文档 | 职业共性结构 |
 | Feature | [`战士/Feature-战士.md`](战士/Feature-战士.md)、[`骑士/Feature-骑士.md`](骑士/Feature-骑士.md)、[`德鲁伊/Feature-德鲁伊.md`](德鲁伊/Feature-德鲁伊.md) | 单职业核心概念 |
-| Feature | [`战士/Feature-战士武器系统.md`](战士/Feature-战士武器系统.md)、[`战士/Feature-战士体系联动.md`](战士/Feature-战士体系联动.md) 及四体系文档 | 战士武器与卡牌（MVP） |
+| Feature | [`战士/Feature-战士体系联动.md`](战士/Feature-战士体系联动.md) 及三体系文档（MVP）；[`战士/Feature-战士武器系统.md`](Feature-战士武器系统（废弃.md)（Post-MVP） | 战士卡牌（MVP） |
 | Foundation | [`../设计规范/Foundation-卡牌与角色五维设计.md`](../设计规范/Foundation-卡牌与角色五维设计.md) | 五维框架 |
 | Presentation | [`Presentation-职业选择与构筑界面设计.md`](Presentation-职业选择与构筑界面设计.md) | 选职与构筑 UI |
 

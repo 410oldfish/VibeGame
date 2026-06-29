@@ -12,9 +12,9 @@
 
 | Layer            | 含义                                   | 典型文档                                    |
 | ---------------- | ------------------------------------ | --------------------------------------- |
-| **Foundation**   | 无依赖的内容：跨系统语义、同步、设计规范、状态词条表           | `Foundation-状态技能与道具联动规则.md`             |
-| **Core**         | 依赖**Foundation**；战斗公共时序、牌组流转、空间规则    | `Core-战斗系统.md`、`Core-六边形战斗规则.md`        |
-| **Feature**      | 依赖**Core**：局外循环、职业/敌人/地形/奖励/遭遇等内容与机制 | `Feature-冒险地图与关卡设计.md`、`Feature-哥布林.md` |
+| **Foundation**   | 无依赖的内容：跨系统语义、同步、设计规范、状态 **参考表** | `Foundation-状态技能与道具联动规则.md`、`Foundation-增益/减益状态（参考表）` |
+| **Core**         | 依赖 **Foundation**；战斗公共时序、牌组流转、空间规则    | `Core-战斗系统.md`、`Core-六边形战斗规则.md`        |
+| **Feature**      | 依赖 **Core**：局外循环、职业/敌人/地形/奖励/遭遇等内容与机制 | `Feature-冒险地图与关卡设计.md`、`Feature-哥布林.md`、`Feature-已投入设计词条登记.md` |
 | **Presentation** | UI、信息架构、反馈（不写玩法数值）                   | `Presentation-冒险地图界面设计.md`              |
 | **Polish**       | 平衡假设、测试观察、验证记录                       | `Polish-原型数值与测试观察点.md`                  |
 
@@ -46,7 +46,8 @@
     Feature-战士.md
     Feature-战士武器系统.md
     Feature-战士事件节点.md
-    Feature-战士过渡卡牌.md
+    Feature-战士卡牌.md
+    Feature-战士事件节点.md
     Feature-战士体系-*.md
     Feature-战士体系联动.md
   骑士/
