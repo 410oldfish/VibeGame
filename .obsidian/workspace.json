@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "design/职业系统/战士.md",
+                "file": "design/策划案/职业系统/战士/Feature-战士卡牌.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "战士"
+              "title": "Feature-战士卡牌"
             }
           }
         ]
@@ -185,26 +185,41 @@
   },
   "active": "806b858b44f97a3c",
   "lastOpenFiles": [
-    "design/状态效果系统/增益状态.md",
-    "design/敌人系统/哥布林.md",
-    "design/卡牌构筑系统/玩家基础卡牌数值基准.md",
-    "design/状态效果系统/减益状态.md",
-    "design/职业系统/德鲁伊.md",
-    "design/游戏粗略策划案.md",
-    "design/冒险系统/冒险地图与关卡设计.md",
-    "design/状态/减益状态.md",
-    "design/遭遇/遭遇与原型战斗设计.md",
-    "design/平衡/原型数值与测试观察点.md",
-    "design/规则/状态技能与道具联动规则.md",
-    "design/规则/网络方案.md",
-    "design/规则/冒险地图与关卡设计.md",
-    "design/规则/六边形战斗规则.md",
-    "design/规则/联网.md",
-    "design/规则/卡牌与角色五维设计.md",
-    "design/规则/卡牌与构筑系统设计.md",
-    "design/规则/奖励与成长设计.md",
-    "design/规则/基础规则.md",
-    "design/规则/敌人牌组与意图机制.md",
-    "design/地形/地形与地形改装规则.md"
+    "design/策划案/敌人系统/Feature-石像鬼.md",
+    "design/策划案/敌人系统/Feature-夺心魔.md",
+    "design/策划案/敌人系统/Feature-寄生藤蔓.md",
+    "design/策划案/敌人系统/Feature-地狱犬.md",
+    "design/策划案/敌人系统/Feature-宝箱怪.md",
+    "design/策划案/敌人系统/Feature-活墙壁.md",
+    "design/策划案/设计规范/Feature-卡牌与敌人设计灵感来源.md",
+    "design/策划案/职业系统/战士/Feature-战士体系-卖血.md",
+    "design/策划案/职业系统/战士/Feature-战士体系-位移.md",
+    "design/策划案/状态效果系统/Foundation-减益状态.md",
+    "design/策划案/职业系统/战士/Feature-战士卡牌.md",
+    "design/策划案/职业系统/战士/Feature-战士体系-减益.md",
+    "design/策划案/职业系统/战士/Feature-战士.md",
+    "design/策划案/地形系统/Feature-地形与地形改装规则.md",
+    "design/策划案/设计规范/Feature-已投入设计词条登记.md",
+    "design/策划案/状态效果系统/Foundation-状态技能与道具联动规则.md",
+    "design/策划案/状态效果系统/Presentation-状态效果展示设计.md",
+    "design/策划案/职业系统/战士/Feature-战士体系-塞牌.md",
+    "design/策划案/职业系统/骑士/Feature-骑士.md",
+    "design/策划案/职业系统/德鲁伊/Feature-德鲁伊.md",
+    "design/策划案/设计规范/Foundation-卡牌词缀与效果语义.md",
+    "design/策划案/敌人系统/Feature-敌人牌组与意图机制.md",
+    "design/策划案/敌人系统/Presentation-敌方意图展示设计.md",
+    "design/策划案/敌人系统/Feature-部落酋长.md",
+    "design/策划案/敌人系统/Feature-投矛哥布林.md",
+    "design/策划案/敌人系统/Feature-哥布林队长.md",
+    "VibeGame/Assets/Scripts/TEngineIntegration/IHexNetworkModule.cs.meta",
+    "VibeGame/Assets/Scripts/TEngineIntegration/IHexNetworkModule.cs",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameModule.cs.meta",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameModule.cs",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameEvents.cs.meta",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameEvents.cs",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameEntry.cs.meta",
+    "VibeGame/Assets/Scripts/TEngineIntegration/HexGameEntry.cs",
+    "VibeGame/Assets/Scripts/TEngineIntegration",
+    "VibeGame/Assets/Scripts/TEngineIntegration.meta"
   ]
 }

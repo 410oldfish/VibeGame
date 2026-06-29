@@ -1,1 +1,5 @@
-{}
+{
+  "enabledCssSnippets": [
+    "design-tables"
+  ]
+}

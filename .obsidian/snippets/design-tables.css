@@ -1,0 +1,180 @@
+/*
+ * VibeGame 策划案 · Obsidian 表格阅读优化
+ * 路径：库根目录/.obsidian/snippets/design-tables.css
+ * 启用：设置 → 外观 → CSS 片段 → design-tables
+ */
+
+:is(.markdown-preview-view, .markdown-reading-view) table,
+.markdown-source-view.mod-cm6 .cm-table-widget table {
+  table-layout: auto;
+  width: max(100%, fit-content);
+  max-width: 100%;
+  font-size: 0.92em;
+  border-collapse: collapse;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) th,
+:is(.markdown-preview-view, .markdown-reading-view) td,
+.markdown-source-view.mod-cm6 .cm-table-widget th,
+.markdown-source-view.mod-cm6 .cm-table-widget td {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  padding: 0.4em 0.65em;
+  line-height: 1.45;
+}
+
+/* ── 两列表：第二列（说明/语义）加宽 ── */
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(2)):not(:has(thead th:nth-child(3))) th:nth-child(2),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(2)):not(:has(thead th:nth-child(3))) td:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(2)):not(:has(thead th:nth-child(3))) th:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(2)):not(:has(thead th:nth-child(3))) td:nth-child(2) {
+  min-width: 18em;
+  width: 72%;
+}
+
+/* ── 三列表及以上：最后一列（效果/示例/备注）偏宽 ── */
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(3)):not(:has(thead th:nth-child(9))) th:last-child,
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(3)):not(:has(thead th:nth-child(9))) td:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(3)):not(:has(thead th:nth-child(9))) th:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(3)):not(:has(thead th:nth-child(9))) td:last-child {
+  min-width: 12em;
+  width: 28%;
+}
+
+/* ── 敌人牌组表（4~6 列，首列「卡牌名称」）── */
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:nth-child(1),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:nth-child(1) {
+  min-width: 4.5em;
+  white-space: nowrap;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:last-child,
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:last-child {
+  min-width: 16em;
+  width: 36%;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:not(:first-child):not(:last-child),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:not(:first-child):not(:last-child),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) th:not(:first-child):not(:last-child),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(4)):not(:has(thead th:nth-child(7))) td:not(:first-child):not(:last-child) {
+  white-space: nowrap;
+}
+
+/* ── 基准牌「快步」等 9 列表 ── */
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:nth-child(1),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:nth-child(1) {
+  min-width: 4.5em;
+  white-space: nowrap;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:nth-child(2),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:nth-child(2) {
+  min-width: 10em;
+  width: 18%;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:last-child,
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) th:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(9)):not(:has(thead th:nth-child(10))) td:last-child {
+  min-width: 20em;
+  width: 34%;
+}
+
+/* ── 战士卡牌表（11 列）── */
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(1),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(1),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(1) {
+  min-width: 4.5em;
+  white-space: nowrap;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(2),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(2),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(2) {
+  min-width: 24em;
+  width: 34%;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(3),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(3),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(10),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(10),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(3),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(3),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(10),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(10) {
+  min-width: 2.5em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(4),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(4),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(5),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(5),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(6),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(6),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(7),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(7),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(8),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(8),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:nth-child(9),
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:nth-child(9),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(4),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(4),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(5),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(5),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(6),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(6),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(7),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(7),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(8),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(8),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:nth-child(9),
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:nth-child(9) {
+  white-space: nowrap;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) th:last-child,
+:is(.markdown-preview-view, .markdown-reading-view) table:has(thead th:nth-child(11)) td:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) th:last-child,
+.markdown-source-view.mod-cm6 .cm-table-widget table:has(thead th:nth-child(11)) td:last-child {
+  min-width: 9em;
+  max-width: 14em;
+}
+
+/* ── 超宽表横向滚动 ── */
+:is(.markdown-preview-view, .markdown-reading-view) .table-wrapper,
+.markdown-source-view.mod-cm6 .cm-table-widget {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) .table-wrapper table,
+.markdown-source-view.mod-cm6 .cm-table-widget table {
+  margin-bottom: 0;
+}
+
+:is(.markdown-preview-view, .markdown-reading-view) thead th,
+.markdown-source-view.mod-cm6 .cm-table-widget thead th {
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--background-primary);
+  box-shadow: 0 1px 0 var(--background-modifier-border);
+}
