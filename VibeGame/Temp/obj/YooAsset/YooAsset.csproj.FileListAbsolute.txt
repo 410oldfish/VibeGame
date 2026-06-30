@@ -1,9 +1,0 @@
-F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.deps.json
-F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.dll
-F:\VibeGame\VibeGame\Temp\bin\Debug\YooAsset.pdb
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.csproj.AssemblyReference.cache
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.GeneratedMSBuildEditorConfig.editorconfig
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.csproj.CoreCompileInputs.cache
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.sourcelink.json
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.dll
-F:\VibeGame\VibeGame\Temp\obj\YooAsset\YooAsset.pdb
