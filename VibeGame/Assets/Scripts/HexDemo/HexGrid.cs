@@ -64,6 +64,13 @@ namespace HexDemo
         [Range(1f, 1.3f)]
         public float tileFillScale = 1.08f;
 
+        [Header("Terrain Features")]
+        public bool generateFeatureTerrain = true;
+        [Range(0f, 0.3f)]
+        public float highGroundChance = 0.08f;
+        [Range(0f, 0.3f)]
+        public float ruinChance = 0.05f;
+
         [Header("Materials")]
         public Material tileMaterial;
         public Color tileBaseColor = new(0.42f, 0.78f, 0.42f, 1f);
@@ -141,8 +148,27 @@ namespace HexDemo
             tile.grid = this;
             tile.topHeight = topHeight;
             tile.CacheVisuals();
+            InitializeFeatureTerrain(tile);
 
             _tiles[coord] = tile;
+        }
+
+        private void InitializeFeatureTerrain(HexTile tile)
+        {
+            if (!generateFeatureTerrain || tile == null)
+                return;
+
+            float centerQ = (width - 1) * 0.5f;
+            float centerR = (height - 1) * 0.5f;
+            float centerDistance = Mathf.Abs(tile.coord.q - centerQ) + Mathf.Abs(tile.coord.r - centerR);
+            if (centerDistance < 2f)
+                return;
+
+            float featureRoll = Mathf.PerlinNoise(tile.coord.q * 0.91f + 21.7f, tile.coord.r * 0.91f + 14.2f);
+            if (featureRoll > 1f - highGroundChance)
+                tile.SetStructure(HexTerrainStructureType.HighGround);
+            else if (featureRoll < ruinChance)
+                tile.SetStructure(HexTerrainStructureType.Ruin, 4);
         }
 
         private float CreateTileVisual(Transform parent, HexAxialCoord coord, float terrainLift)
@@ -434,6 +460,11 @@ namespace HexDemo
         public HexAxialCoord coord;
         public HexGrid grid;
         public float topHeight;
+        public HexTerrainBaseType baseTerrain = HexTerrainBaseType.Ground;
+        public HexTerrainStructureType structureType = HexTerrainStructureType.None;
+        public int structureHp;
+        public HexTerrainPickupType pickupType = HexTerrainPickupType.None;
+        public int pickupAmount;
         private readonly List<HexTileEffectState> _effects = new();
 
         private Renderer[] _renderers = System.Array.Empty<Renderer>();
@@ -462,8 +493,83 @@ namespace HexDemo
         private static readonly Color PathTileTint = new(0.14f, 0.5f, 1f, 0.78f);
         private static readonly Color PathTargetTint = new(1f, 0.9f, 0.18f, 0.92f);
         private static readonly Color PathInvalidTint = new(1f, 0.18f, 0.18f, 0.9f);
+        private static readonly Color HighGroundTint = new(0.36f, 0.36f, 0.42f, 1f);
+        private static readonly Color RuinTint = new(0.54f, 0.42f, 0.28f, 1f);
+        private static readonly Color PickupTint = new(0.95f, 0.78f, 0.22f, 1f);
 
         public IReadOnlyList<HexTileEffectState> Effects => _effects;
+        public bool BlocksMovement => baseTerrain == HexTerrainBaseType.Pit || structureType != HexTerrainStructureType.None;
+        public bool BlocksLineOfSight => structureType == HexTerrainStructureType.HighGround;
+        public bool HasRuin => structureType == HexTerrainStructureType.Ruin && structureHp > 0;
+
+        public void SetStructure(HexTerrainStructureType type, int hp = 0)
+        {
+            structureType = type;
+            structureHp = type == HexTerrainStructureType.Ruin ? Mathf.Max(1, hp) : 0;
+            ApplyVisuals();
+        }
+
+        public void ClearStructure()
+        {
+            structureType = HexTerrainStructureType.None;
+            structureHp = 0;
+            ApplyVisuals();
+        }
+
+        public bool DamageStructure(int amount, out bool destroyed)
+        {
+            destroyed = false;
+            if (structureType != HexTerrainStructureType.Ruin || amount <= 0)
+                return false;
+
+            structureHp = Mathf.Max(0, structureHp - amount);
+            destroyed = structureHp <= 0;
+            if (destroyed)
+            {
+                ClearStructure();
+                RollDefaultRuinPickup();
+            }
+            else
+            {
+                ApplyVisuals();
+            }
+
+            return true;
+        }
+
+        public void SetPickup(HexTerrainPickupType type, int amount)
+        {
+            pickupType = type;
+            pickupAmount = Mathf.Max(0, amount);
+            ApplyVisuals();
+        }
+
+        public HexTerrainPickupType ConsumePickup(out int amount)
+        {
+            amount = pickupAmount;
+            var type = pickupType;
+            pickupType = HexTerrainPickupType.None;
+            pickupAmount = 0;
+            ApplyVisuals();
+            return type;
+        }
+
+        private void RollDefaultRuinPickup()
+        {
+            int roll = Random.Range(0, 3);
+            switch (roll)
+            {
+                case 0:
+                    SetPickup(HexTerrainPickupType.Heal, 15);
+                    break;
+                case 1:
+                    SetPickup(HexTerrainPickupType.TemporaryStrength, 2);
+                    break;
+                default:
+                    SetPickup(HexTerrainPickupType.TemporaryCard, 1);
+                    break;
+            }
+        }
 
         public void AddOrRefreshEffect(HexTileEffectType effectType, int stacks, int duration)
         {
@@ -638,6 +744,12 @@ namespace HexDemo
             {
                 var state = _materialStates[i];
                 Color color = state.baseColor;
+                if (structureType == HexTerrainStructureType.HighGround)
+                    color = Color.Lerp(color, HighGroundTint, 0.46f);
+                else if (structureType == HexTerrainStructureType.Ruin)
+                    color = Color.Lerp(color, RuinTint, 0.42f);
+                else if (pickupType != HexTerrainPickupType.None)
+                    color = Color.Lerp(color, PickupTint, 0.34f);
                 if (tileTintStrength > 0f)
                     color = Color.Lerp(color, tileTint, tileTintStrength);
                 if (_hoverStrength > 0.001f)

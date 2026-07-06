@@ -84,8 +84,8 @@ namespace HexDemo
 
             _runState = new HexRunState
             {
-                maxHealth = 10,
-                currentHealth = 10,
+                maxHealth = GetProfessionMaxHealth(profession),
+                currentHealth = GetProfessionMaxHealth(profession),
                 gold = 0,
                 profession = profession,
                 deckDefinitions = HexCardLibrary.CreateStarterDeck(profession),
@@ -97,6 +97,15 @@ namespace HexDemo
 
             BuildMapCanvas();
             ShowMap();
+        }
+
+        private static int GetProfessionMaxHealth(HexCardProfession profession)
+        {
+            return profession switch
+            {
+                HexCardProfession.Warrior => 70,
+                _ => 10,
+            };
         }
 
         private void ShowProfessionSelection()
@@ -397,6 +406,7 @@ namespace HexDemo
         {
             var roomRoot = new GameObject($"Room_{title.Replace(" ", "_")}");
             _roomRoots.Add(roomRoot);
+            HexMapNodeType nodeType = GetBattleNodeType(title);
 
             var grid = roomRoot.AddComponent<HexGrid>();
             grid.width = 11;
@@ -450,23 +460,26 @@ namespace HexDemo
                 var enemyAnimator = SpawnCharacterModel(enemyRoot.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab());
                 var enemyUnit = enemyRoot.AddComponent<HexBattleUnit>();
                 var enemyCoord = FindClosestExistingCoord(grid, desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)], enemyUnits.Select(unit => unit.State.coord).Append(playerCoord));
+                string enemyDefinitionId = GetEncounterEnemyDefinitionId(i, nodeType);
+                var enemyDefinition = HexCardLibrary.GetEnemyDefinition(enemyDefinitionId);
                 enemyUnit.Initialize(new HexBattleUnitState
                 {
                     id = $"enemy_{i + 1}",
-                    displayName = i == 0 ? "Goblin" : $"Goblin {i + 1}",
+                    displayName = enemyDefinition.displayName,
+                    enemyDefinitionId = enemyDefinition.id,
                     faction = HexBattleFaction.Enemy,
-                    maxHealth = 3,
-                    currentHealth = 3,
+                    maxHealth = GetEncounterEnemyHealth(enemyDefinition.id),
+                    currentHealth = GetEncounterEnemyHealth(enemyDefinition.id),
                     armor = 0,
                     energy = 0,
                     maxEnergy = 0,
                     drawPerTurn = 0,
                     maxMovePoints = 0,
                     currentMovePoints = 0,
-                    attackRange = 1,
-                    emptyDrawPileStrengthGain = 3,
+                    attackRange = enemyDefinition.attackMaxRange,
+                    emptyDrawPileStrengthGain = enemyDefinition.emptyDrawPileStrengthGain,
                     coord = enemyCoord,
-                }, enemyAnimator, HexCardLibrary.CreateGoblinDeck());
+                }, enemyAnimator, enemyDefinition.deckDefinitions);
                 enemyUnit.SnapTo(grid, 0.03f);
                 enemyUnits.Add(enemyUnit);
             }
@@ -1111,6 +1124,8 @@ namespace HexDemo
             {
                 if (blocked != null && blocked.Contains(kvp.Key))
                     continue;
+                if (kvp.Value != null && kvp.Value.BlocksMovement)
+                    continue;
 
                 float distance = HexAxialCoord.Distance(kvp.Key, desired);
                 if (distance < bestDistance)
@@ -1121,6 +1136,42 @@ namespace HexDemo
             }
 
             return bestCoord;
+        }
+
+        private static string GetEncounterEnemyDefinitionId(int enemyIndex, HexMapNodeType nodeType)
+        {
+            if (nodeType == HexMapNodeType.Boss)
+                return "tribal_chieftain";
+            if (nodeType == HexMapNodeType.EliteBattle)
+                return enemyIndex == 0 ? "goblin_captain" : "spear_goblin";
+
+            return (enemyIndex % 3) switch
+            {
+                1 => "spear_goblin",
+                2 => "goblin_captain",
+                _ => "goblin",
+            };
+        }
+
+        private static int GetEncounterEnemyHealth(string enemyDefinitionId)
+        {
+            return enemyDefinitionId switch
+            {
+                "tribal_chieftain" => 60,
+                "goblin_captain" => 28,
+                "spear_goblin" => 14,
+                _ => 12,
+            };
+        }
+
+        private static HexMapNodeType GetBattleNodeType(string title)
+        {
+            if (!string.IsNullOrWhiteSpace(title) && title.ToLowerInvariant().Contains("boss"))
+                return HexMapNodeType.Boss;
+            if (!string.IsNullOrWhiteSpace(title) && title.ToLowerInvariant().Contains("elite"))
+                return HexMapNodeType.EliteBattle;
+
+            return HexMapNodeType.SmallBattle;
         }
 
         private static GameObject LoadStarter02Prefab()

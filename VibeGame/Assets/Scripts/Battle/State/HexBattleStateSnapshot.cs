@@ -12,6 +12,8 @@ namespace HexDemo.Battle
         public List<HexUnitSnapshot> players = new();
         public List<HexUnitSnapshot> enemies = new();
         public List<HexHandVisibilitySnapshot> hands = new();
+        public List<HexTileSnapshot> tiles = new();
+        public List<HexEnemyIntentSnapshot> enemyIntents = new();
     }
 
     [Serializable]
@@ -27,6 +29,7 @@ namespace HexDemo.Battle
         public int stamina;
         public int armor;
         public bool alive;
+        public string enemyDefinitionId;
     }
 
     [Serializable]
@@ -35,5 +38,33 @@ namespace HexDemo.Battle
         public string playerId;
         public int handCount;
         public List<string> visibleCardIds = new();
+    }
+
+    [Serializable]
+    public sealed class HexTileSnapshot
+    {
+        public int q;
+        public int r;
+        public HexTerrainBaseType baseTerrain;
+        public HexTerrainStructureType structureType;
+        public int structureHp;
+        public HexTerrainPickupType pickupType;
+        public int pickupAmount;
+    }
+
+    [Serializable]
+    public sealed class HexEnemyIntentSnapshot
+    {
+        public string unitId;
+        public string enemyDefinitionId;
+        public List<HexEnemyIntentSlotSnapshot> slots = new();
+    }
+
+    [Serializable]
+    public sealed class HexEnemyIntentSlotSnapshot
+    {
+        public HexEnemyIntentSlotKind slotKind;
+        public string cardRuntimeId;
+        public string cardId;
     }
 }

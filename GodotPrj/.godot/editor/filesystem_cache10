@@ -1,0 +1,7 @@
+63f7b34db8d8cdea90c76aacccf841ec
+::res://::1783341510
+README.md::TextFile::-1::1783340648::0::1::::<><><>0<>0<><>::
+::res://scenes/::1783340648
+combat_loop.tscn::PackedScene::-1::1783340648::0::1::::<><><>0<>0<><>::res://scripts/combat_loop.gd
+::res://scripts/::1783340905
+combat_loop.gd::GDScript::8157267152407932285::1783341110::0::1::::<>Node2D<><>0<>0<><>::

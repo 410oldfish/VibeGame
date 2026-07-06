@@ -25,7 +25,6 @@ namespace HexDemo
             public bool collided;
         }
 
-        private const int EnemyIntentDrawCount = 3;
         private const int WeaponSkillEnergyCost = 1;
         private const int WeaponSkillCooldown = 2;
 
@@ -51,6 +50,7 @@ namespace HexDemo
         private bool _battleFinished;
         private bool _updateRegistered;
         private readonly List<HexCardPlayLogEntry> _playLog = new();
+        private readonly Dictionary<HexBattleUnit, List<HexEnemyIntentSlot>> _enemyIntentSlots = new();
 
         public System.Action<bool, int, HexBattleUnit> BattleFinished;
 
@@ -73,6 +73,7 @@ namespace HexDemo
 
                     _enemyUnits.Add(enemyUnits[i]);
                     enemyUnits[i].ResetBattleState();
+                    EnsureEnemyDefinition(enemyUnits[i]);
                     _units.Add(enemyUnits[i]);
                 }
             }
@@ -86,6 +87,43 @@ namespace HexDemo
             GameEvent.Send(HexGameEvents.BattleStarted, this);
 
             BeginTurn(HexBattleFaction.Player);
+        }
+
+        private void EnsureEnemyDefinition(HexBattleUnit enemy)
+        {
+            if (enemy?.State == null)
+                return;
+
+            string definitionId = string.IsNullOrWhiteSpace(enemy.State.enemyDefinitionId)
+                ? InferEnemyDefinitionId(enemy.State.displayName)
+                : enemy.State.enemyDefinitionId;
+            var definition = HexCardLibrary.GetEnemyDefinition(definitionId);
+            if (definition == null)
+                return;
+
+            enemy.State.enemyDefinitionId = definition.id;
+            if (string.IsNullOrWhiteSpace(enemy.State.displayName))
+                enemy.State.displayName = definition.displayName;
+            enemy.State.emptyDrawPileStrengthGain = definition.emptyDrawPileStrengthGain;
+            enemy.State.enemyAttackMinRange = definition.attackMinRange;
+            enemy.State.enemyAttackMaxRange = definition.attackMaxRange;
+            enemy.State.attackRange = Mathf.Max(enemy.State.attackRange, definition.attackMaxRange);
+        }
+
+        private static string InferEnemyDefinitionId(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+                return "goblin";
+
+            string normalized = displayName.ToLowerInvariant();
+            if (normalized.Contains("spear") || displayName.Contains("投矛"))
+                return "spear_goblin";
+            if (normalized.Contains("captain") || displayName.Contains("队长"))
+                return "goblin_captain";
+            if (normalized.Contains("chieftain") || normalized.Contains("boss") || displayName.Contains("酋长"))
+                return "tribal_chieftain";
+
+            return "goblin";
         }
 
         private void OnDestroy()
@@ -112,8 +150,8 @@ namespace HexDemo
             if (_busy || _draggedCard != null || _currentTurn != HexBattleFaction.Player)
                 return;
 
-            if (Input.GetMouseButtonDown(0) && !TryHandleEnemyHandClick())
-                TryHandlePlayerMoveClick();
+            if (Input.GetMouseButtonDown(0))
+                TryHandleEnemyHandClick();
         }
 
         public IReadOnlyList<HexCardInstance> GetLocalHand()
@@ -141,6 +179,9 @@ namespace HexDemo
             if (enemy == null || enemy.State == null || enemy.State.faction != HexBattleFaction.Enemy)
                 return System.Array.Empty<HexCardInstance>();
 
+            if (_enemyIntentSlots.TryGetValue(enemy, out var slots) && slots != null && slots.Count > 0)
+                return slots.Where(slot => slot?.card != null).Select(slot => slot.card).ToList();
+
             return enemy.Deck.Hand;
         }
 
@@ -157,7 +198,7 @@ namespace HexDemo
         public string GetStatusSummary()
         {
             var builder = new StringBuilder();
-            builder.Append($"Hero   HP {_playerUnit.State.currentHealth}/{_playerUnit.State.maxHealth}  Armor {_playerUnit.State.armor}  Energy {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}  Move {_playerUnit.State.currentMovePoints}/{_playerUnit.State.maxMovePoints}");
+            builder.Append($"Hero   HP {_playerUnit.State.currentHealth}/{_playerUnit.State.maxHealth}  Armor {_playerUnit.State.armor}  Energy {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}");
             AppendStatusEffects(builder, _playerUnit);
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
@@ -166,7 +207,7 @@ namespace HexDemo
                     continue;
 
                 builder.Append('\n');
-                builder.Append($"Enemy {i + 1}  HP {enemy.State.currentHealth}/{enemy.State.maxHealth}  Armor {enemy.State.armor}  Energy {enemy.State.energy}/{enemy.State.maxEnergy}  Move {enemy.State.currentMovePoints}/{enemy.State.maxMovePoints}");
+                builder.Append($"Enemy {i + 1}  HP {enemy.State.currentHealth}/{enemy.State.maxHealth}  Armor {enemy.State.armor}");
                 AppendStatusEffects(builder, enemy);
                 AppendEnemyIntent(builder, enemy);
             }
@@ -181,7 +222,7 @@ namespace HexDemo
 
         public string GetResourceSummary()
         {
-            return $"Energy  {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}\nMove    {_playerUnit.State.currentMovePoints}/{_playerUnit.State.maxMovePoints}\nPower   {_playerUnit.State.strength}";
+            return $"Energy  {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}\nMove    Cards only\nPower   {_playerUnit.State.strength}";
         }
 
         public string GetWeaponSkillSummary()
@@ -361,6 +402,8 @@ namespace HexDemo
         {
             if (_draggedCard == null || _draggedCard.definition == null || _draggedCard.definition.isUnplayable || !_playerUnit.CanPay(_draggedCard) || _busy)
                 return false;
+            if (HasCardTag(_draggedCard.definition, "首发") && _playerUnit.State.cardsPlayedThisTurn > 0)
+                return false;
 
             if (_draggedCard.definition.id == "C_01_030" && !CanClashSucceed(_playerUnit))
                 return false;
@@ -401,6 +444,18 @@ namespace HexDemo
             {
                 if (!TryGetHoveredTile(out var hoveredTile, out _))
                     return false;
+
+                if (IsTileActionCard(_draggedCard.definition))
+                {
+                    if (!CanResolveTileAction(_playerUnit, _draggedCard.definition, hoveredTile.coord))
+                        return false;
+
+                    if (!SubmitAuthoritativeCommand(HexNetworkCommandType.PlayCard, ToPayload(_draggedCard, hoveredTile.coord)))
+                        return true;
+
+                    StartCoroutine(ResolveCardRoutine(_playerUnit, _playerUnit, _draggedCard, hoveredTile.coord));
+                    return true;
+                }
 
                 if (HexAxialCoord.Distance(_playerUnit.State.coord, hoveredTile.coord) > _draggedCard.definition.castRange)
                     return false;
@@ -474,6 +529,7 @@ namespace HexDemo
             bool exhaustCard = card.exhaustWhenPlayed || HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Exhaust);
             source.Deck.DiscardFromHand(card, exhaustCard);
             RecordCardPlay(source, target, card, targetedCoord);
+            source.NotifyCardPlayed();
             _ui?.ShowPlayedCard(source, card);
             if (source.State.bleed > 0)
             {
@@ -585,6 +641,18 @@ namespace HexDemo
                     else
                         GainArmorWithFeedback(source, card.definition.amount);
                     break;
+                case HexCardEffectType.Move:
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.definition.amount));
+                    break;
+                case HexCardEffectType.MoveAway:
+                    yield return ResolveRetreatRoutine(source, target, Mathf.Max(1, card.definition.amount));
+                    break;
+                case HexCardEffectType.DestroyHighGround:
+                    DestroyHighGroundAt(targetedCoord);
+                    break;
+                case HexCardEffectType.PlaceRuin:
+                    PlaceRuinNear(source, Mathf.Max(1, card.definition.castRange), Mathf.Max(1, card.definition.amount));
+                    break;
             }
 
             ApplySelfKeywordEffects(source, card);
@@ -686,6 +754,8 @@ namespace HexDemo
                     yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
                 }
 
+                DamageRuinsInCoords(GetDirectionalAreaCoords(source.State.coord, aimedCoord, card.definition.castRange, card.definition.effectRadius), card.definition.amount + Mathf.Max(0, source.State.strength));
+
                 yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
 
                 for (int i = 0; i < targets.Count; i++)
@@ -702,7 +772,8 @@ namespace HexDemo
         private IEnumerator ResolveTileAttackRoutine(HexBattleUnit source, HexAxialCoord centerCoord, HexCardInstance card)
         {
             var targets = GetEnemiesInArea(centerCoord, card.definition.effectRadius, source);
-            if (targets.Count == 0)
+            var affectedCoords = HexBattlePathing.GetCoordsInRange(centerCoord, Mathf.Max(0, card.definition.effectRadius)).ToList();
+            if (targets.Count == 0 && !HasRuinInCoords(affectedCoords))
                 yield break;
 
             source.FaceTarget(grid != null ? grid.AxialToWorld(centerCoord) : source.transform.position + source.transform.forward);
@@ -736,6 +807,8 @@ namespace HexDemo
 
                 yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
             }
+
+            DamageRuinsInCoords(affectedCoords, card.definition.amount + Mathf.Max(0, source.State.strength));
 
             yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
             for (int i = 0; i < targets.Count; i++)
@@ -928,7 +1001,7 @@ namespace HexDemo
         private IEnumerator MoveUnitRoutine(HexBattleUnit unit, List<HexAxialCoord> path, int moveCost, HexAxialCoord? towardTargetCoord = null)
         {
             _busy = true;
-            int movedDistance = Mathf.Max(0, moveCost);
+            int movedDistance = path != null ? Mathf.Max(0, path.Count - 1) : Mathf.Max(0, moveCost);
             if (movedDistance > 0 && unit.State.entangle > 0)
             {
                 ApplyDamageToUnit(unit, unit.State.entangle * movedDistance, unit);
@@ -999,6 +1072,7 @@ namespace HexDemo
             {
                 PrepareEnemyIntents();
                 _playerUnit.BeginTurn();
+                ApplyWarriorBeginTurnPassives(_playerUnit);
                 ApplyDruidBeginTurnPassives(_playerUnit);
                 ApplyBurningAura(_playerUnit);
             }
@@ -1099,13 +1173,13 @@ namespace HexDemo
                 if (primaryTarget == null || !primaryTarget.IsAlive)
                     yield break;
 
-                if (enemy.Deck.Hand.Count == 0)
+                if (!_enemyIntentSlots.TryGetValue(enemy, out var currentSlots) || currentSlots == null || currentSlots.Count == 0)
                     DrawEnemyIntentCards(enemy);
 
-                var intentCards = enemy.Deck.Hand.ToList();
-                for (int cardIndex = 0; cardIndex < intentCards.Count; cardIndex++)
+                var intentSlots = GetEnemyIntentExecutionOrder(enemy);
+                for (int cardIndex = 0; cardIndex < intentSlots.Count; cardIndex++)
                 {
-                    var card = intentCards[cardIndex];
+                    var card = intentSlots[cardIndex]?.card;
                     if (card == null || !enemy.Deck.Hand.Contains(card))
                         continue;
 
@@ -1116,6 +1190,7 @@ namespace HexDemo
                     yield return new WaitForSeconds(0.1f);
                 }
 
+                _enemyIntentSlots.Remove(enemy);
                 enemy.EndTurn();
                 if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive)
                     yield break;
@@ -1146,23 +1221,145 @@ namespace HexDemo
             if (enemy == null)
                 return;
 
-            for (int i = 0; i < EnemyIntentDrawCount; i++)
+            EnsureEnemyDefinition(enemy);
+            var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            var slots = new List<HexEnemyIntentSlot>();
+            enemy.Deck.DiscardHand();
+
+            for (int i = 0; i < definition.intentSlots.Count; i++)
             {
-                var card = enemy.Deck.DrawCard(out bool emptiedDrawPile);
+                var slotKind = definition.intentSlots[i];
+                HexCardInstance card = null;
+                bool emptiedDrawPile = false;
+                for (int attempts = 0; attempts < 8; attempts++)
+                {
+                    card = DrawCardForIntentSlot(enemy, slotKind, out emptiedDrawPile);
+                    if (card == null || !IsFearToken(card))
+                        break;
+
+                    OnEnemyFearTokenDrawn(enemy);
+                    DiscardOrExhaustCard(enemy, card, false);
+                    card = null;
+                }
+
                 if (card == null)
                     break;
 
+                slots.Add(new HexEnemyIntentSlot
+                {
+                    slotKind = slotKind,
+                    card = card,
+                });
+
                 if (emptiedDrawPile)
-                    TriggerEnemyDrawPileEmptiedEffect(enemy);
+                    TriggerEnemyDrawPileEmptiedEffect(enemy, definition);
             }
+
+            _enemyIntentSlots[enemy] = slots;
         }
 
-        private void TriggerEnemyDrawPileEmptiedEffect(HexBattleUnit enemy)
+        private void ApplyWarriorBeginTurnPassives(HexBattleUnit unit)
+        {
+            if (unit == null || unit.State == null || unit.State.profession != HexCardProfession.Warrior)
+                return;
+
+            if (unit.State.warriorStrengthPerTurn > 0)
+                unit.GainStrength(unit.State.warriorStrengthPerTurn);
+
+            if (unit.State.warriorInfernoHeart)
+            {
+                for (int i = 0; i < _enemyUnits.Count; i++)
+                {
+                    var enemy = _enemyUnits[i];
+                    if (enemy == null || !enemy.IsAlive || enemy.State.burn <= 0)
+                        continue;
+                    if (HexAxialCoord.Distance(unit.State.coord, enemy.State.coord) <= 1)
+                        ApplyWarriorBurn(unit, enemy, 1);
+                }
+            }
+
+            var quickStep = HexCardLibrary.GetCardById("warrior_quick_step");
+            if (quickStep != null && !unit.Deck.Hand.Any(card => card?.definition?.id == quickStep.id))
+                unit.Deck.AddToHand(quickStep);
+        }
+
+        private HexCardInstance DrawCardForIntentSlot(HexBattleUnit enemy, HexEnemyIntentSlotKind slotKind, out bool emptiedDrawPile)
+        {
+            emptiedDrawPile = false;
+            if (enemy == null)
+                return null;
+
+            System.Predicate<HexCardDefinition> predicate = slotKind switch
+            {
+                HexEnemyIntentSlotKind.Move => IsEnemyMoveCard,
+                HexEnemyIntentSlotKind.Attack => definition => definition != null && definition.cardType == HexCardType.Attack,
+                _ => null,
+            };
+
+            if (predicate != null)
+            {
+                var matched = enemy.Deck.DrawFirstMatchingToHand(predicate, out emptiedDrawPile);
+                if (matched != null)
+                    return matched;
+            }
+
+            return enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
+        }
+
+        private List<HexEnemyIntentSlot> GetEnemyIntentExecutionOrder(HexBattleUnit enemy)
+        {
+            if (enemy == null || !_enemyIntentSlots.TryGetValue(enemy, out var slots) || slots == null)
+                return new List<HexEnemyIntentSlot>();
+
+            var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            var target = GetPrimaryEnemyTarget(enemy);
+            bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
+            if (definition.intentPattern == HexEnemyIntentPattern.Ranged)
+            {
+                return targetInRange
+                    ? slots.OrderBy(slot => slot.slotKind == HexEnemyIntentSlotKind.Attack ? 0 : slot.slotKind == HexEnemyIntentSlotKind.Move ? 1 : 2).ToList()
+                    : slots.OrderBy(slot => slot.slotKind == HexEnemyIntentSlotKind.Move ? 0 : slot.slotKind == HexEnemyIntentSlotKind.Attack ? 1 : 2).ToList();
+            }
+
+            if (definition.intentPattern == HexEnemyIntentPattern.ApproachStrike)
+            {
+                return targetInRange
+                    ? slots.OrderBy(slot => slot.slotKind == HexEnemyIntentSlotKind.Attack ? 0 : slot.slotKind == HexEnemyIntentSlotKind.Move ? 1 : 2).ToList()
+                    : slots.OrderBy(slot => slot.slotKind == HexEnemyIntentSlotKind.Move ? 0 : slot.slotKind == HexEnemyIntentSlotKind.Attack ? 1 : 2).ToList();
+            }
+
+            return slots.ToList();
+        }
+
+        private void TriggerEnemyDrawPileEmptiedEffect(HexBattleUnit enemy, HexEnemyDefinition definition = null)
         {
             if (enemy == null || enemy.State == null || !enemy.IsAlive)
                 return;
 
-            int strengthGain = Mathf.Max(0, enemy.State.emptyDrawPileStrengthGain);
+            definition ??= HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            if (definition?.bottomCard != null)
+            {
+                switch (definition.bottomCard.effectType)
+                {
+                    case HexCardEffectType.PlaceRuin:
+                        if (PlaceRuinNear(enemy, Mathf.Max(1, definition.bottomCard.castRange), Mathf.Max(1, definition.bottomCard.amount)))
+                        {
+                            enemy.RefreshLabel();
+                            Debug.Log($"{enemy.State.displayName} triggered bottom card {definition.bottomCard.displayName}.");
+                            return;
+                        }
+                        break;
+                }
+
+                if (definition.bottomCard.id == "enemy_goblin_captain_bottom" && TrySummonGoblinMinion(enemy))
+                {
+                    enemy.RefreshLabel();
+                    Debug.Log($"{enemy.State.displayName} triggered bottom card {definition.bottomCard.displayName}.");
+                    return;
+                }
+            }
+
+            int strengthGain = Mathf.Max(0, definition?.emptyDrawPileStrengthGain ?? enemy.State.emptyDrawPileStrengthGain);
             if (strengthGain <= 0)
                 return;
 
@@ -1192,15 +1389,29 @@ namespace HexDemo
                         int takeCount = Mathf.Min(path.Count, maxSteps + 1);
                         var trimmed = path.Take(takeCount).ToList();
                         yield return MoveUnitRoutine(enemy, trimmed, 0, primaryTarget.State.coord);
+                        if (card.definition.id == "enemy_goblin_roll")
+                            GainArmorWithFeedback(enemy, 5);
+                        if (card.definition.id == "enemy_chieftain_charge" && HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= 1)
+                            yield return ResolveDirectAttackRoutine(enemy, primaryTarget, 6);
                         resolved = true;
                     }
                 }
             }
+            else if (card.definition.effectType == HexCardEffectType.MoveAway)
+            {
+                yield return ResolveRetreatRoutine(enemy, primaryTarget, Mathf.Max(1, card.definition.amount));
+                resolved = true;
+            }
             else if (card.definition.effectType == HexCardEffectType.Attack)
             {
-                if (primaryTarget != null &&
+                if (card.definition.id == "enemy_chieftain_quake")
+                {
+                    yield return ResolveChieftainQuakeRoutine(enemy, card);
+                    resolved = true;
+                }
+                else if (primaryTarget != null &&
                     primaryTarget.IsAlive &&
-                    HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange &&
+                    IsInEnemyAttackRange(enemy, primaryTarget, HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId), card.definition) &&
                     CanAttackTarget(enemy, primaryTarget))
                 {
                     yield return ResolveCardRoutine(enemy, primaryTarget, card);
@@ -1212,8 +1423,36 @@ namespace HexDemo
                 yield return ResolveCardRoutine(enemy, enemy, card);
                 resolved = true;
             }
+            else if (card.definition.id == "enemy_goblin_captain_net")
+            {
+                if (primaryTarget != null && primaryTarget.IsAlive && HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange)
+                    primaryTarget.ApplyBind(Mathf.Max(1, card.definition.amount));
+                resolved = true;
+            }
+            else if (card.definition.id == "enemy_goblin_captain_warcry")
+            {
+                enemy.GainStrength(Mathf.Max(1, card.definition.amount));
+                TrySummonGoblinMinion(enemy);
+                resolved = true;
+            }
+            else if (card.definition.id == "enemy_chieftain_brace")
+            {
+                GainArmorWithFeedback(enemy, Mathf.Max(1, card.definition.amount) * 3);
+                resolved = true;
+            }
+            else if (card.definition.id == "enemy_chieftain_drum")
+            {
+                enemy.GainStrength(Mathf.Max(1, card.definition.amount));
+                resolved = true;
+            }
 
             if (!resolved && enemy.Deck.Hand.Contains(card))
+            {
+                DiscardOrExhaustCard(enemy, card, false);
+                enemy.RefreshLabel();
+                _ui.Refresh();
+            }
+            else if (resolved && enemy.Deck.Hand.Contains(card))
             {
                 DiscardOrExhaustCard(enemy, card, false);
                 enemy.RefreshLabel();
@@ -1309,8 +1548,714 @@ namespace HexDemo
             yield return HandleBattleEnd(false);
         }
 
+        private IEnumerator ResolveWarriorDesignCardRoutine(HexBattleUnit source, HexBattleUnit target, HexCardInstance card, int energySpent, HexAxialCoord targetedCoord)
+        {
+            string id = card.definition.id;
+            switch (id)
+            {
+                case "warrior_strike":
+                    yield return ResolveDirectAttackRoutine(source, target, 6);
+                    yield break;
+                case "warrior_defend":
+                    GainArmorWithFeedback(source, 5);
+                    yield break;
+                case "warrior_whirlwind":
+                    yield return ResolveWarriorAreaAttackRoutine(source, source.State.coord, 2, 2, knockback: 1);
+                    yield break;
+                case "warrior_burning":
+                    ApplyWarriorBurnToArea(source, source.State.coord, 2, 1);
+                    yield break;
+                case "warrior_quick_step":
+                case "warrior_move_forward":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.definition.amount));
+                    yield break;
+                case "warrior_heavy_blow":
+                    yield return ResolveDirectAttackRoutine(source, target, 9);
+                    yield break;
+                case "warrior_cleave":
+                    yield return ResolveWarriorAdjacentMultiAttackRoutine(source, 2, 4);
+                    yield break;
+                case "warrior_dash_strike":
+                    yield return MoveTowardTargetRoutine(source, target, 1);
+                    yield return ResolveDirectAttackRoutine(source, target, 6);
+                    RefundEnergyOnHit(source, target, energySpent);
+                    yield break;
+                case "warrior_pursuit":
+                    yield return ResolveDirectAttackRoutine(source, target, 5);
+                    RefundEnergyOnHit(source, target, energySpent);
+                    yield return ResolveRetreatRoutine(source, target, 1);
+                    yield break;
+                case "warrior_battle_cry_transition":
+                    source.GainStrength(2);
+                    RecycleOneExhaustedCard(source);
+                    yield break;
+                case "warrior_ember":
+                    ExhaustRandomHandCard(source);
+                    DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_warmup":
+                    DrawCardsForUnit(source, 2, true);
+                    ExhaustRandomHandCard(source);
+                    yield break;
+                case "warrior_iron_wall":
+                    GainArmorWithFeedback(source, 10);
+                    yield break;
+                case "warrior_true_courage":
+                    GainArmorWithFeedback(source, 7);
+                    DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_armor_break_setup":
+                    source.State.warriorNextAttackDamageBonus += 3;
+                    DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_numb":
+                    if (source.State.cardsPlayedThisTurn > 1)
+                        source.State.energy += 4;
+                    yield break;
+                case "warrior_simplify":
+                    MoveExhaustCardsFromDrawToHand(source, 2);
+                    yield break;
+                case "warrior_ember_chaos":
+                    yield return ResolveEmberChaosRoutine(source);
+                    yield break;
+                case "warrior_sidestep":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    GainArmorWithFeedback(source, 4);
+                    yield break;
+                case "warrior_guillotine":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 2);
+                    yield return KnockbackAdjacentEnemiesRoutine(source, 1);
+                    yield break;
+                case "warrior_disarming_stare":
+                    yield return ApplyKnockbackRoutine(source, target, 1);
+                    yield break;
+                case "warrior_battle_line":
+                    source.State.warriorStrengthPerTurn += 1;
+                    yield break;
+                case "warrior_immovable_mountain":
+                    source.State.retainArmorBetweenTurns = true;
+                    yield break;
+                case "warrior_triple_slash":
+                    for (int i = 0; i < 3; i++)
+                        yield return ResolveDirectAttackRoutine(source, target, 2);
+                    yield break;
+
+                case "warrior_burning_mark":
+                    ApplyWarriorBurn(source, target, 3);
+                    yield break;
+                case "warrior_fire_tongue":
+                    ApplyWarriorBurnToArea(source, source.State.coord, 1, 1);
+                    yield break;
+                case "warrior_burning_blade":
+                    yield return ResolveDirectAttackRoutine(source, target, 6);
+                    int extraBurn = target.State.burn > 0 ? ScaleWarriorChainValue(source, "burn", 4) : 0;
+                    ApplyWarriorBurn(source, target, 2 + extraBurn);
+                    yield break;
+                case "warrior_burning_wind":
+                    yield return ResolveBurningWindRoutine(source);
+                    yield break;
+                case "warrior_grand_fire_slash":
+                    yield return ResolveDirectionalAttackRoutine(source, targetedCoord, card);
+                    ApplyWarriorBurnToCoords(source, GetDirectionalAreaCoords(source.State.coord, targetedCoord, 1, 0), 2);
+                    yield break;
+                case "warrior_fire_ring":
+                    yield return ResolveWarriorAreaAttackRoutine(source, source.State.coord, 1, 3, burn: 1);
+                    yield break;
+                case "warrior_ignite":
+                    yield return ResolveIgniteRoutine(source, target);
+                    yield break;
+                case "warrior_combust":
+                    yield return ResolveCombustRoutine(source, target);
+                    yield break;
+                case "warrior_endless_fireworks":
+                    yield return ResolveDirectAttackRoutine(source, target, Mathf.Max(0, target.State.burn));
+                    yield break;
+                case "warrior_ember_brand":
+                    yield return MoveTowardTargetRoutine(source, target, 1);
+                    yield return ResolveDirectAttackRoutine(source, target, 8);
+                    ApplyWarriorBurn(source, target, 2);
+                    if (target != null && target.State.burn > 0)
+                        RefundEnergyOnHit(source, target, energySpent);
+                    yield break;
+                case "warrior_molten":
+                    source.State.energy += Mathf.Max(0, target.State.burn / 3);
+                    yield break;
+                case "warrior_double_burn":
+                    if (target != null)
+                        ApplyWarriorBurn(source, target, Mathf.Max(0, target.State.burn));
+                    yield break;
+                case "warrior_ember_guard":
+                    GainArmorWithFeedback(source, 5 + (_enemyUnits.Any(enemy => enemy != null && enemy.IsAlive && enemy.State.burn > 0) ? 5 : 0));
+                    yield break;
+                case "warrior_blazing_step":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    ApplyBurnToAdjacentEnemies(source, 2);
+                    MarkWarriorEvent(source, "burn");
+                    yield break;
+                case "warrior_inferno_heart":
+                    source.State.warriorInfernoHeart = true;
+                    yield break;
+
+                case "warrior_vile_words":
+                    AddFearCardsToEnemy(source, target, 1);
+                    DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_fear_howl":
+                    AddFearCardsToEnemy(source, target, 2);
+                    yield return ApplyKnockbackRoutine(source, target, 1);
+                    yield break;
+                case "warrior_scarecrow":
+                    AddFearCardsToEnemy(source, GetNearestEnemy(source), 1);
+                    GainArmorWithFeedback(source, 8);
+                    yield break;
+                case "warrior_contagion":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    AddFearCardsToEnemy(source, GetNearestEnemy(source), 3);
+                    yield break;
+                case "warrior_intimidate":
+                    AddFearCardsToAllEnemies(source, 1);
+                    yield break;
+                case "warrior_empty_city":
+                    GainArmorWithFeedback(source, 12);
+                    if (CountFearCardsInEnemyDrawPiles() >= 3)
+                        DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_warcry_fear":
+                    GainArmorWithFeedback(source, 7 + (HasAnyFearIntent() ? 5 : 0));
+                    yield break;
+                case "warrior_frighten_back":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    AddFearCardsToEnemy(source, GetNearestEnemy(source), 1);
+                    yield break;
+                case "warrior_nightmare_step":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 2);
+                    ConsumeFearIntentCard();
+                    yield break;
+                case "warrior_screaming_raid":
+                    int raidRepeats = ConsumeFearIntentCard() ? 2 : 1;
+                    yield return MoveTowardTargetRoutine(source, target, 2);
+                    for (int i = 0; i < raidRepeats; i++)
+                        yield return ResolveDirectAttackRoutine(source, target, 15);
+                    yield break;
+                case "warrior_fear_descends":
+                    yield return ResolveFearDescendsRoutine(source, target);
+                    yield break;
+                case "warrior_inner_demon":
+                    source.State.warriorDrawOnFearAdded = true;
+                    yield break;
+                case "warrior_omen":
+                    source.State.warriorExtraFearFirstEachTurn = true;
+                    yield break;
+                case "warrior_mind_seize":
+                    source.State.warriorGainStrengthOnFearPlayed = true;
+                    yield break;
+                case "warrior_mind_guard":
+                    source.State.warriorArmorOnFearAdded = true;
+                    yield break;
+
+                case "warrior_blood_sacrifice":
+                    ApplyWarriorBleed(source, source, 1);
+                    source.GainStrength(2);
+                    yield break;
+                case "warrior_bloodletting":
+                    ApplyWarriorBleed(source, source, 2);
+                    DrawCardsForUnit(source, 2, true);
+                    yield break;
+                case "warrior_pain_strike":
+                    yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "bleed", 11));
+                    ApplyWarriorBleed(source, target, 3);
+                    yield break;
+                case "warrior_life_for_life":
+                    yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "bleed", 6));
+                    ApplyWarriorBleed(source, target, 2);
+                    if (source.State.bleed > 0)
+                        DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_blood_surge":
+                    source.GainStrength(ScaleWarriorChainValue(source, "bleed", Mathf.Max(0, source.State.bleed)));
+                    yield break;
+                case "warrior_martyrdom":
+                    yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "bleed", 6 + Mathf.Max(0, source.State.bleed)));
+                    yield break;
+                case "warrior_blood_forged":
+                    yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "bleed", 6 + source.State.warriorBleedEventsThisBattle * 3));
+                    RefundEnergyOnHit(source, target, energySpent);
+                    yield break;
+                case "warrior_blood_sword":
+                    source.State.warriorDamageMultiplierThisTurn = 2;
+                    ApplyWarriorBleed(source, source, 99);
+                    yield break;
+                case "warrior_brutality":
+                    GainArmorWithFeedback(source, 6);
+                    ApplyWarriorBleed(source, source, 1);
+                    if (source.State.warriorBleedEventsThisBattle >= 7)
+                        source.State.vampirism += 1;
+                    yield break;
+                case "warrior_scab":
+                    GainArmorWithFeedback(source, 16);
+                    ApplyWarriorBleed(source, source, 2);
+                    yield break;
+                case "warrior_pain_draw":
+                    int bleed = Mathf.Max(0, source.State.bleed);
+                    source.State.bleed = 0;
+                    source.GainStrength(bleed / 2);
+                    yield break;
+                case "warrior_endure":
+                    int delayed = Mathf.Max(0, source.State.bleed);
+                    source.State.bleed = 0;
+                    source.State.warriorDelayedBleed += delayed;
+                    DrawCardsForUnit(source, 1, true);
+                    yield break;
+                case "warrior_red_step":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    ApplyWarriorBleed(source, source, 1);
+                    GainArmorWithFeedback(source, 3);
+                    yield break;
+                case "warrior_blood_pact":
+                    source.State.warriorBloodPactActive = true;
+                    yield break;
+                case "warrior_backflow":
+                    source.State.warriorHealOnBleedGain = true;
+                    yield break;
+                case "warrior_death_harvest":
+                    yield return ResolveDeathHarvestRoutine(source, target);
+                    yield break;
+
+                case "warrior_flash_step_slash":
+                    yield return MoveTowardTargetRoutine(source, target, 1);
+                    yield return ResolveDirectAttackRoutine(source, target, 5);
+                    if (source.State.warriorMoveEventThisTurn)
+                        yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "move", 5));
+                    yield break;
+                case "warrior_break_platform":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    DestroyAdjacentHighGround(source.State.coord, targetedCoord);
+                    yield break;
+                case "warrior_charge":
+                    yield return MoveTowardTargetRoutine(source, target, 1);
+                    yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "move", 4));
+                    yield break;
+                case "warrior_quake":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    yield return ResolveWarriorAreaAttackRoutine(source, source.State.coord, 1, source.State.warriorMoveEventThisTurn ? 6 : 4);
+                    ConvertRandomHighGroundToRuin(source.State.coord, 1, 4);
+                    yield break;
+            }
+        }
+
+        private IEnumerator ResolveWarriorAreaAttackRoutine(HexBattleUnit source, HexAxialCoord center, int radius, int damage, int burn = 0, int knockback = 0)
+        {
+            var targets = GetEnemiesInArea(center, Mathf.Max(0, radius), source)
+                .OrderBy(enemy => HexAxialCoord.Distance(source.State.coord, enemy.State.coord))
+                .ToList();
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+                if (target == null || !target.IsAlive)
+                    continue;
+
+                yield return ResolveDirectAttackRoutine(source, target, damage, knockback: knockback);
+                if (target.IsAlive && burn > 0)
+                    ApplyWarriorBurn(source, target, burn);
+            }
+        }
+
+        private IEnumerator ResolveWarriorAdjacentMultiAttackRoutine(HexBattleUnit source, int maxTargets, int damage)
+        {
+            var targets = _enemyUnits
+                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .OrderBy(enemy => enemy.State.currentHealth)
+                .Take(Mathf.Max(1, maxTargets))
+                .ToList();
+            for (int i = 0; i < targets.Count; i++)
+                yield return ResolveDirectAttackRoutine(source, targets[i], damage);
+        }
+
+        private IEnumerator MoveTowardTargetRoutine(HexBattleUnit source, HexBattleUnit target, int maxSteps)
+        {
+            if (source == null || target == null || maxSteps <= 0)
+                yield break;
+
+            var path = FindBestApproachPath(source, target.State.coord, 1);
+            if (path == null || path.Count < 2)
+                yield break;
+
+            if (path.Count - 1 > maxSteps)
+                path = path.Take(maxSteps + 1).ToList();
+
+            yield return MoveUnitRoutine(source, path, 0, target.State.coord);
+        }
+
+        private IEnumerator KnockbackAdjacentEnemiesRoutine(HexBattleUnit source, int distance)
+        {
+            var targets = _enemyUnits
+                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .ToList();
+            for (int i = 0; i < targets.Count; i++)
+                yield return ApplyKnockbackRoutine(source, targets[i], distance);
+        }
+
+        private void RefundEnergyOnHit(HexBattleUnit source, HexBattleUnit target, int energySpent)
+        {
+            if (source == null || target == null || energySpent <= 0)
+                return;
+
+            source.State.energy += energySpent;
+        }
+
+        private void RecycleOneExhaustedCard(HexBattleUnit source)
+        {
+            if (source == null || source.Deck.ExhaustPile.Count == 0)
+                return;
+
+            source.Deck.AddToDrawPile(source.Deck.ExhaustPile[0].definition, false);
+        }
+
+        private void MoveExhaustCardsFromDrawToHand(HexBattleUnit source, int count)
+        {
+            if (source == null || count <= 0)
+                return;
+
+            for (int i = 0; i < count; i++)
+            {
+                var card = source.Deck.DrawFirstMatchingToHand(definition => HexCardLibrary.HasKeyword(definition, HexCardKeywordType.Exhaust), out _);
+                if (card == null)
+                    break;
+            }
+        }
+
+        private IEnumerator ResolveEmberChaosRoutine(HexBattleUnit source)
+        {
+            if (source == null)
+                yield break;
+
+            var cardsToExhaust = source.Deck.Hand.ToList();
+            int damage = cardsToExhaust.Count * 3;
+            for (int i = 0; i < cardsToExhaust.Count; i++)
+                DiscardOrExhaustCard(source, cardsToExhaust[i], true);
+
+            if (damage <= 0)
+                yield break;
+
+            yield return ResolveWarriorAreaAttackRoutine(source, source.State.coord, 2, damage);
+        }
+
+        private void ApplyWarriorBurn(HexBattleUnit source, HexBattleUnit target, int amount)
+        {
+            if (target == null || amount <= 0)
+                return;
+
+            target.ApplyBurn(amount);
+            MarkWarriorEvent(source, "burn");
+        }
+
+        private void ApplyWarriorBurnToArea(HexBattleUnit source, HexAxialCoord center, int radius, int amount)
+        {
+            var targets = GetEnemiesInArea(center, Mathf.Max(0, radius), source);
+            for (int i = 0; i < targets.Count; i++)
+                ApplyWarriorBurn(source, targets[i], amount);
+        }
+
+        private void ApplyWarriorBurnToCoords(HexBattleUnit source, IEnumerable<HexAxialCoord> coords, int amount)
+        {
+            if (coords == null)
+                return;
+
+            var covered = new HashSet<HexAxialCoord>(coords);
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                var enemy = _enemyUnits[i];
+                if (enemy != null && enemy.IsAlive && covered.Contains(enemy.State.coord))
+                    ApplyWarriorBurn(source, enemy, amount);
+            }
+        }
+
+        private IEnumerator ResolveBurningWindRoutine(HexBattleUnit source)
+        {
+            var targets = _enemyUnits
+                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .ToList();
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+                source.GainStrength(Mathf.Max(0, target.State.burn) * 2);
+                yield return ResolveDirectAttackRoutine(source, target, 5);
+            }
+        }
+
+        private IEnumerator ResolveIgniteRoutine(HexBattleUnit source, HexBattleUnit target)
+        {
+            if (target == null)
+                yield break;
+
+            int burn = Mathf.Max(0, target.State.burn);
+            if (burn > 0)
+                yield return ResolveDirectAttackRoutine(source, target, burn);
+
+            var adjacent = _enemyUnits
+                .Where(enemy => enemy != null && enemy.IsAlive && enemy != target && HexAxialCoord.Distance(target.State.coord, enemy.State.coord) <= 1)
+                .ToList();
+            for (int i = 0; i < adjacent.Count; i++)
+                ApplyWarriorBurn(source, adjacent[i], 1);
+        }
+
+        private IEnumerator ResolveCombustRoutine(HexBattleUnit source, HexBattleUnit target)
+        {
+            if (target == null)
+                yield break;
+
+            int burn = Mathf.Max(0, target.State.burn);
+            target.State.burn = 0;
+            if (burn <= 0)
+                yield break;
+
+            GainArmorWithFeedback(source, burn);
+            yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "burn", burn * 2));
+        }
+
+        private void ApplyWarriorBleed(HexBattleUnit source, HexBattleUnit target, int amount)
+        {
+            if (target == null || amount <= 0)
+                return;
+
+            target.ApplyBleed(amount);
+            if (source != null && source == target && source.State.warriorHealOnBleedGain)
+                source.Heal(1);
+            MarkWarriorEvent(source, "bleed");
+            if (source?.State == null || source.State.profession != HexCardProfession.Warrior)
+                return;
+
+            source.State.warriorBleedEventsThisBattle += 1;
+            source.State.warriorBleedEventsThisTurn += 1;
+            if (source.State.warriorBloodPactActive)
+                source.State.warriorNextAttackDamageBonus += 2;
+        }
+
+        private void AddFearCardsToEnemy(HexBattleUnit source, HexBattleUnit target, int count)
+        {
+            if (source == null || count <= 0)
+                return;
+
+            target ??= GetNearestEnemy(source);
+            var fear = HexCardLibrary.GetFearToken();
+            if (target == null || fear == null)
+                return;
+
+            int total = count;
+            if (source.State.warriorExtraFearFirstEachTurn && !source.State.warriorExtraFearUsedThisTurn)
+            {
+                total += 1;
+                source.State.warriorExtraFearUsedThisTurn = true;
+            }
+
+            for (int i = 0; i < total; i++)
+                target.Deck.AddToDrawPile(fear, false);
+
+            MarkWarriorEvent(source, "fear");
+            if (source.State.warriorDrawOnFearAdded)
+                DrawCardsForUnit(source, total, true);
+            if (source.State.warriorArmorOnFearAdded)
+                GainArmorWithFeedback(source, total * 3);
+        }
+
+        private void AddFearCardsToAllEnemies(HexBattleUnit source, int count)
+        {
+            var targets = _enemyUnits.Where(enemy => enemy != null && enemy.IsAlive).ToList();
+            for (int i = 0; i < targets.Count; i++)
+                AddFearCardsToEnemy(source, targets[i], count);
+        }
+
+        private HexBattleUnit GetNearestEnemy(HexBattleUnit source)
+        {
+            if (source == null)
+                return null;
+
+            return _enemyUnits
+                .Where(enemy => enemy != null && enemy.IsAlive)
+                .OrderBy(enemy => HexAxialCoord.Distance(source.State.coord, enemy.State.coord))
+                .FirstOrDefault();
+        }
+
+        private int CountFearCardsInEnemyDrawPiles()
+        {
+            int count = 0;
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                var enemy = _enemyUnits[i];
+                if (enemy == null)
+                    continue;
+
+                count += enemy.Deck.DrawPile.Count(card => IsFearToken(card));
+            }
+
+            return count;
+        }
+
+        private bool HasAnyFearIntent()
+        {
+            return _enemyIntentSlots.Values.Any(slots => slots != null && slots.Any(slot => IsFearIntentCard(slot?.card)));
+        }
+
+        private bool ConsumeFearIntentCard()
+        {
+            foreach (var kvp in _enemyIntentSlots.ToList())
+            {
+                var slots = kvp.Value;
+                if (slots == null)
+                    continue;
+
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    if (!IsFearIntentCard(slots[i]?.card))
+                        continue;
+
+                    DiscardOrExhaustCard(kvp.Key, slots[i].card, false);
+                    slots.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsFearIntentCard(HexCardInstance card)
+        {
+            return card?.definition != null && (IsFearToken(card) || HasCardTag(card.definition, "恐惧"));
+        }
+
+        private void OnEnemyFearTokenDrawn(HexBattleUnit enemy)
+        {
+            if (_playerUnit == null || !_playerUnit.IsAlive)
+                return;
+
+            if (_playerUnit.State.warriorGainStrengthOnFearPlayed)
+                _playerUnit.GainStrength(2);
+        }
+
+        private IEnumerator ResolveFearDescendsRoutine(HexBattleUnit source, HexBattleUnit target)
+        {
+            if (target == null)
+                yield break;
+
+            bool empowered = HasAnyFearIntent();
+            var movement = ResolveForcedMovement(source, target, empowered ? 3 : 1, false);
+            if (movement != null && movement.path.Count > 1)
+                yield return MoveUnitRoutine(target, movement.path, 0);
+            if (movement != null && movement.collided)
+                ApplyDamageToUnit(target, 50, source);
+        }
+
+        private IEnumerator ResolveDeathHarvestRoutine(HexBattleUnit source, HexBattleUnit target)
+        {
+            if (target == null)
+                yield break;
+
+            int beforeHealth = target.State.currentHealth;
+            yield return ResolveDirectAttackRoutine(source, target, 2);
+            int healthLost = Mathf.Max(0, beforeHealth - target.State.currentHealth);
+            if (healthLost > 0)
+                source.Heal(healthLost);
+        }
+
+        private void MarkWarriorEvent(HexBattleUnit source, string eventKey)
+        {
+            if (source?.State == null || source.State.profession != HexCardProfession.Warrior)
+                return;
+
+            switch (eventKey)
+            {
+                case "burn":
+                    source.State.warriorBurnEventThisTurn = true;
+                    break;
+                case "fear":
+                    source.State.warriorFearEventThisTurn = true;
+                    break;
+                case "bleed":
+                    source.State.warriorBleedEventThisTurn = true;
+                    break;
+                case "move":
+                    source.State.warriorMoveEventThisTurn = true;
+                    break;
+            }
+        }
+
+        private int ScaleWarriorChainValue(HexBattleUnit source, string eventKey, int baseValue)
+        {
+            if (source?.State == null || baseValue <= 0)
+                return baseValue;
+
+            bool eventTriggered = eventKey switch
+            {
+                "burn" => source.State.warriorBurnEventThisTurn,
+                "fear" => source.State.warriorFearEventThisTurn,
+                "bleed" => source.State.warriorBleedEventThisTurn,
+                "move" => source.State.warriorMoveEventThisTurn,
+                _ => false,
+            };
+            if (!eventTriggered || IsWarriorFinisherUsed(source, eventKey))
+                return baseValue;
+
+            SetWarriorFinisherUsed(source, eventKey);
+            int chainLength = 0;
+            if (source.State.warriorBurnEventThisTurn)
+                chainLength++;
+            if (source.State.warriorFearEventThisTurn)
+                chainLength++;
+            if (source.State.warriorBleedEventThisTurn)
+                chainLength++;
+            if (source.State.warriorMoveEventThisTurn)
+                chainLength++;
+
+            float multiplier = chainLength switch
+            {
+                <= 0 => 1f,
+                1 => 1.5f,
+                2 => 2f,
+                _ => 1f + 4f * Mathf.Pow(1.25f, chainLength - 3),
+            };
+            return Mathf.CeilToInt(baseValue * multiplier);
+        }
+
+        private static bool IsWarriorFinisherUsed(HexBattleUnit source, string eventKey)
+        {
+            return eventKey switch
+            {
+                "burn" => source.State.warriorBurnFinisherUsedThisTurn,
+                "fear" => source.State.warriorFearFinisherUsedThisTurn,
+                "bleed" => source.State.warriorBleedFinisherUsedThisTurn,
+                "move" => source.State.warriorMoveFinisherUsedThisTurn,
+                _ => false,
+            };
+        }
+
+        private static void SetWarriorFinisherUsed(HexBattleUnit source, string eventKey)
+        {
+            switch (eventKey)
+            {
+                case "burn":
+                    source.State.warriorBurnFinisherUsedThisTurn = true;
+                    break;
+                case "fear":
+                    source.State.warriorFearFinisherUsedThisTurn = true;
+                    break;
+                case "bleed":
+                    source.State.warriorBleedFinisherUsedThisTurn = true;
+                    break;
+                case "move":
+                    source.State.warriorMoveFinisherUsedThisTurn = true;
+                    break;
+            }
+        }
+
         private IEnumerator ResolveCustomCardRoutine(HexBattleUnit source, HexBattleUnit target, HexCardInstance card, int energySpent, HexAxialCoord targetedCoord, System.Action<bool> setHandled)
         {
+            if (card?.definition != null && card.definition.id.StartsWith("warrior_", System.StringComparison.OrdinalIgnoreCase))
+            {
+                yield return ResolveWarriorDesignCardRoutine(source, target, card, energySpent, targetedCoord);
+                setHandled?.Invoke(true);
+                yield break;
+            }
+
             bool handled = true;
             switch (card.definition.id)
             {
@@ -1408,6 +2353,36 @@ namespace HexDemo
                     source.State.axeAppliesArmorBreak = true;
                     source.State.hammerDoubleArmorDamage = true;
                     source.State.swordAppliesBrittle = true;
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_move_forward":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 2);
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_sidestep":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    GainArmorWithFeedback(source, 4);
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_break_platform":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    DestroyAdjacentHighGround(source.State.coord, targetedCoord);
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_blazing_step":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    ApplyBurnToAdjacentEnemies(source, 2);
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_red_step":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    source.ApplyBleed(1);
+                    GainArmorWithFeedback(source, 3);
+                    setHandled?.Invoke(true);
+                    yield break;
+                case "warrior_frighten_back":
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, 1);
+                    AddFearToNearestEnemy(source);
                     setHandled?.Invoke(true);
                     yield break;
                 case "C_03_001":
@@ -2134,6 +3109,9 @@ namespace HexDemo
 
         private void HandlePostMovementPassives(HexBattleUnit unit, IReadOnlyList<HexAxialCoord> path, HexAxialCoord? towardTargetCoord, int movedDistance)
         {
+            if (unit?.State != null && unit.State.profession == HexCardProfession.Warrior && movedDistance > 0)
+                MarkWarriorEvent(unit, "move");
+
             if (!IsDruid(unit) || path == null || path.Count < 2 || movedDistance <= 0)
                 return;
 
@@ -2176,6 +3154,316 @@ namespace HexDemo
             unit.Deck.AddToHand(definition);
         }
 
+        private bool IsTileActionCard(HexCardDefinition definition)
+        {
+            return definition != null &&
+                   definition.targetType == HexCardTargetType.Tile &&
+                   (definition.cardType == HexCardType.Action ||
+                    definition.effectType == HexCardEffectType.Move ||
+                    definition.effectType == HexCardEffectType.DestroyHighGround ||
+                    definition.effectType == HexCardEffectType.PlaceRuin);
+        }
+
+        private static bool IsEnemyMoveCard(HexCardDefinition definition)
+        {
+            return definition != null &&
+                   (definition.effectType == HexCardEffectType.MoveToward ||
+                    definition.effectType == HexCardEffectType.MoveAway ||
+                    definition.effectType == HexCardEffectType.Move);
+        }
+
+        private static bool IsFearToken(HexCardInstance card)
+        {
+            return card?.definition != null && card.definition.id == "status_fear_token";
+        }
+
+        private static bool HasCardTag(HexCardDefinition definition, string tag)
+        {
+            if (definition?.tags == null || string.IsNullOrWhiteSpace(tag))
+                return false;
+
+            for (int i = 0; i < definition.tags.Length; i++)
+            {
+                if (string.Equals(definition.tags[i], tag, System.StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool IsInEnemyAttackRange(HexBattleUnit enemy, HexBattleUnit target, HexEnemyDefinition definition, HexCardDefinition cardDefinition = null)
+        {
+            if (enemy == null || target == null)
+                return false;
+
+            int distance = HexAxialCoord.Distance(enemy.State.coord, target.State.coord);
+            int minRange = Mathf.Max(1, definition?.attackMinRange ?? enemy.State.enemyAttackMinRange);
+            int maxRange = Mathf.Max(minRange, cardDefinition != null ? cardDefinition.castRange : definition?.attackMaxRange ?? enemy.State.enemyAttackMaxRange);
+            if (cardDefinition != null && cardDefinition.castRange <= 1)
+                minRange = 1;
+
+            return distance >= minRange && distance <= maxRange;
+        }
+
+        private bool CanResolveTileAction(HexBattleUnit unit, HexCardDefinition definition, HexAxialCoord targetCoord)
+        {
+            if (unit == null || definition == null || grid == null)
+                return false;
+
+            if (definition.effectType == HexCardEffectType.DestroyHighGround &&
+                grid.TryGetTile(targetCoord, out var targetTile) &&
+                targetTile.structureType == HexTerrainStructureType.HighGround &&
+                HexAxialCoord.Distance(unit.State.coord, targetCoord) <= Mathf.Max(1, definition.castRange))
+                return true;
+
+            if (definition.effectType == HexCardEffectType.PlaceRuin)
+                return HexAxialCoord.Distance(unit.State.coord, targetCoord) <= Mathf.Max(1, definition.castRange);
+
+            var path = BuildCardMovementPath(unit, targetCoord, Mathf.Max(1, definition.amount));
+            return path != null && path.Count >= 2;
+        }
+
+        private IEnumerator ResolveCardMoveRoutine(HexBattleUnit unit, HexAxialCoord destination, int maxSteps)
+        {
+            if (unit == null || !unit.IsAlive)
+                yield break;
+
+            var path = BuildCardMovementPath(unit, destination, Mathf.Max(1, maxSteps));
+            if (path == null || path.Count < 2)
+                yield break;
+
+            yield return MoveUnitRoutine(unit, path, 0);
+        }
+
+        private List<HexAxialCoord> BuildCardMovementPath(HexBattleUnit unit, HexAxialCoord destination, int maxSteps)
+        {
+            if (grid == null || unit == null || maxSteps <= 0 || unit.State.rooted || unit.State.bind > 0)
+                return null;
+
+            if (IsToadJumpMovement(unit))
+            {
+                int distance = HexAxialCoord.Distance(unit.State.coord, destination);
+                if (distance <= 0 || distance > maxSteps || IsMovementDestinationBlocked(destination, unit))
+                    return null;
+
+                return new List<HexAxialCoord> { unit.State.coord, destination };
+            }
+
+            var path = HexBattlePathing.FindPath(grid, unit.State.coord, destination, coord => IsMovementBlocked(coord, unit));
+            if (path == null || path.Count < 2 || path.Count - 1 > maxSteps)
+                return null;
+
+            return path;
+        }
+
+        private IEnumerator ResolveRetreatRoutine(HexBattleUnit unit, HexBattleUnit threat, int maxSteps)
+        {
+            if (grid == null || unit == null || threat == null || maxSteps <= 0 || unit.State.rooted || unit.State.bind > 0)
+                yield break;
+
+            List<HexAxialCoord> bestPath = null;
+            int bestDistance = HexAxialCoord.Distance(unit.State.coord, threat.State.coord);
+            foreach (var candidate in grid.Tiles.Keys)
+            {
+                if (candidate.Equals(unit.State.coord))
+                    continue;
+                if (IsMovementDestinationBlocked(candidate, unit))
+                    continue;
+
+                var path = HexBattlePathing.FindPath(grid, unit.State.coord, candidate, coord => IsMovementBlocked(coord, unit));
+                if (path == null || path.Count < 2 || path.Count - 1 > maxSteps)
+                    continue;
+
+                int distance = HexAxialCoord.Distance(candidate, threat.State.coord);
+                if (distance > bestDistance || (distance == bestDistance && (bestPath == null || path.Count < bestPath.Count)))
+                {
+                    bestPath = path;
+                    bestDistance = distance;
+                }
+            }
+
+            if (bestPath != null)
+                yield return MoveUnitRoutine(unit, bestPath, 0, threat.State.coord);
+        }
+
+        private void ApplyBurnToAdjacentEnemies(HexBattleUnit source, int amount)
+        {
+            if (source == null || amount <= 0)
+                return;
+
+            for (int i = 0; i < _units.Count; i++)
+            {
+                var unit = _units[i];
+                if (unit == null || !unit.IsAlive || unit.State.faction == source.State.faction)
+                    continue;
+                if (HexAxialCoord.Distance(source.State.coord, unit.State.coord) <= 1)
+                    unit.ApplyBurn(amount);
+            }
+        }
+
+        private void AddFearToNearestEnemy(HexBattleUnit source)
+        {
+            var fear = HexCardLibrary.GetFearToken();
+            if (source == null || fear == null)
+                return;
+
+            var enemy = _enemyUnits
+                .Where(candidate => candidate != null && candidate.IsAlive)
+                .OrderBy(candidate => HexAxialCoord.Distance(source.State.coord, candidate.State.coord))
+                .FirstOrDefault();
+            enemy?.Deck.AddToDrawPile(fear, false);
+        }
+
+        private void DestroyAdjacentHighGround(HexAxialCoord sourceCoord, HexAxialCoord targetCoord)
+        {
+            if (DestroyHighGroundAt(targetCoord))
+                return;
+
+            foreach (var neighbor in grid.GetNeighbors(sourceCoord))
+            {
+                if (DestroyHighGroundAt(neighbor))
+                    return;
+            }
+        }
+
+        private bool DestroyHighGroundAt(HexAxialCoord coord)
+        {
+            if (grid == null || !grid.TryGetTile(coord, out var tile) || tile == null)
+                return false;
+
+            if (tile.structureType != HexTerrainStructureType.HighGround)
+                return false;
+
+            tile.ClearStructure();
+            tile.FlashClick();
+            return true;
+        }
+
+        private bool PlaceRuinNear(HexBattleUnit source, int radius, int hp)
+        {
+            if (source == null || grid == null)
+                return false;
+
+            var candidates = HexBattlePathing.GetCoordsInRange(source.State.coord, Mathf.Max(1, radius))
+                .Where(coord => grid.TryGetTile(coord, out var tile) &&
+                                tile != null &&
+                                !coord.Equals(source.State.coord) &&
+                                !tile.BlocksMovement &&
+                                !IsOccupied(coord, source))
+                .OrderBy(_ => Random.value)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return false;
+
+            if (!grid.TryGetTile(candidates[0], out var chosenTile) || chosenTile == null)
+                return false;
+
+            chosenTile.SetStructure(HexTerrainStructureType.Ruin, Mathf.Max(1, hp));
+            chosenTile.FlashClick();
+            return true;
+        }
+
+        private bool TrySummonGoblinMinion(HexBattleUnit source)
+        {
+            if (source == null || grid == null)
+                return false;
+
+            var candidates = HexBattlePathing.GetCoordsInRange(source.State.coord, 2)
+                .Where(coord => !coord.Equals(source.State.coord) &&
+                                grid.TryGetTile(coord, out var tile) &&
+                                tile != null &&
+                                !tile.BlocksMovement &&
+                                !IsOccupied(coord, source))
+                .OrderBy(coord => HexAxialCoord.Distance(source.State.coord, coord))
+                .ThenBy(_ => Random.value)
+                .ToList();
+            if (candidates.Count == 0)
+                return false;
+
+            var definition = HexCardLibrary.GetEnemyDefinition("goblin");
+            var summonRoot = new GameObject($"SummonedGoblin_{_enemyUnits.Count + 1}");
+            summonRoot.transform.SetParent(source.transform.parent != null ? source.transform.parent : transform, false);
+            var summoned = summonRoot.AddComponent<HexBattleUnit>();
+            summoned.Initialize(new HexBattleUnitState
+            {
+                id = $"enemy_summon_{_enemyUnits.Count + 1}",
+                displayName = definition.displayName,
+                enemyDefinitionId = definition.id,
+                faction = HexBattleFaction.Enemy,
+                maxHealth = 12,
+                currentHealth = 12,
+                armor = 0,
+                energy = 0,
+                maxEnergy = 0,
+                drawPerTurn = 0,
+                maxMovePoints = 0,
+                currentMovePoints = 0,
+                attackRange = definition.attackMaxRange,
+                emptyDrawPileStrengthGain = definition.emptyDrawPileStrengthGain,
+                coord = candidates[0],
+            }, null, definition.deckDefinitions);
+            summoned.SnapTo(grid, unitYOffset);
+            EnsureEnemyDefinition(summoned);
+            _enemyUnits.Add(summoned);
+            _units.Add(summoned);
+            summoned.RefreshLabel();
+            return true;
+        }
+
+        private IEnumerator ResolveChieftainQuakeRoutine(HexBattleUnit source, HexCardInstance card)
+        {
+            if (source == null || card?.definition == null)
+                yield break;
+
+            var targets = _units
+                .Where(unit => unit != null && unit.IsAlive && unit != source && HexAxialCoord.Distance(source.State.coord, unit.State.coord) <= Mathf.Max(1, card.definition.effectRadius))
+                .ToList();
+
+            source.PlayAttackAnimation();
+            yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+                if (target == null || !target.IsAlive)
+                    continue;
+
+                ApplyAttackDamage(source, target, GetModifiedDamage(source, target, card.definition.amount + Mathf.Max(0, source.State.strength)));
+                if (target.IsAlive)
+                {
+                    var push = ResolveForcedMovement(source, target, 1, false);
+                    if (push != null && push.path.Count > 1)
+                        yield return MoveUnitRoutine(target, push.path, 0);
+                }
+                else
+                {
+                    yield return target.PlayDeathAndCleanup();
+                }
+            }
+
+            ConvertRandomHighGroundToRuin(source.State.coord, Mathf.Max(1, card.definition.effectRadius), 4);
+        }
+
+        private bool ConvertRandomHighGroundToRuin(HexAxialCoord center, int radius, int hp)
+        {
+            if (grid == null)
+                return false;
+
+            var candidates = HexBattlePathing.GetCoordsInRange(center, radius)
+                .Where(coord => grid.TryGetTile(coord, out var tile) && tile != null && tile.structureType == HexTerrainStructureType.HighGround)
+                .OrderBy(_ => Random.value)
+                .ToList();
+            if (candidates.Count == 0)
+                return false;
+
+            if (!grid.TryGetTile(candidates[0], out var chosenTile) || chosenTile == null)
+                return false;
+
+            chosenTile.SetStructure(HexTerrainStructureType.Ruin, Mathf.Max(1, hp));
+            chosenTile.FlashClick();
+            return true;
+        }
+
         private List<HexAxialCoord> FindBestApproachPath(HexBattleUnit movingUnit, HexAxialCoord targetCoord, int desiredDistance)
         {
             if (grid == null || movingUnit == null)
@@ -2216,7 +3504,7 @@ namespace HexDemo
             for (int step = 0; step < maxDistance; step++)
             {
                 HexAxialCoord next = HexAxialCoord.Neighbor(current, directionIndex);
-                if (grid == null || !grid.IsCoordInside(next) || HasSceneObstacleAtCoord(next, movingUnit))
+                if (grid == null || !grid.IsCoordInside(next) || IsMovementBlocked(next, movingUnit))
                     break;
 
                 path.Add(next);
@@ -2298,7 +3586,35 @@ namespace HexDemo
             if (!grid.TryGetTile(coord, out var tile) || tile == null)
                 return;
 
+            if (unit.State.faction == HexBattleFaction.Player)
+                ApplyPickupToUnit(tile, unit);
             ApplyTileEffectsToUnit(tile, unit);
+        }
+
+        private void ApplyPickupToUnit(HexTile tile, HexBattleUnit unit)
+        {
+            if (tile == null || unit == null || tile.pickupType == HexTerrainPickupType.None)
+                return;
+
+            HexTerrainPickupType pickupType = tile.ConsumePickup(out int amount);
+            if (pickupType == HexTerrainPickupType.None)
+                return;
+
+            switch (pickupType)
+            {
+                case HexTerrainPickupType.Heal:
+                    unit.Heal(Mathf.Max(1, amount));
+                    break;
+                case HexTerrainPickupType.TemporaryStrength:
+                    unit.GainStrength(Mathf.Max(1, amount));
+                    break;
+                case HexTerrainPickupType.TemporaryCard:
+                    AddGeneratedCardToHand(unit, HexCardLibrary.GetTemporaryThrowingAxe());
+                    break;
+            }
+
+            unit.RefreshLabel();
+            _ui?.Refresh();
         }
 
         private void ApplyTileEffectsToUnit(HexTile tile, HexBattleUnit unit)
@@ -2437,10 +3753,50 @@ namespace HexDemo
                 return;
 
             int beforeHealth = target.State.currentHealth;
-            ApplyDamageWithFeedback(target, amount, source);
-            int healthLost = Mathf.Max(0, beforeHealth - target.State.currentHealth);
-            if (healthLost > 0 && target == source && target.State.gainStrengthOnSelfDamage)
+            int healthLost = ApplyDamageWithFeedback(target, amount, source);
+            if (healthLost > 0 && source != null && source.State.vampirism > 0)
+            {
+                source.Heal(healthLost);
+                source.State.vampirism = Mathf.Max(0, source.State.vampirism - 1);
+            }
+
+            int selfHealthLost = Mathf.Max(0, beforeHealth - target.State.currentHealth);
+            if (selfHealthLost > 0 && target == source && target.State.gainStrengthOnSelfDamage)
                 target.GainStrength(1);
+        }
+
+        private bool HasRuinInCoords(IEnumerable<HexAxialCoord> coords)
+        {
+            if (grid == null || coords == null)
+                return false;
+
+            foreach (var coord in coords)
+            {
+                if (grid.TryGetTile(coord, out var tile) && tile != null && tile.HasRuin)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void DamageRuinsInCoords(IEnumerable<HexAxialCoord> coords, int amount)
+        {
+            if (grid == null || coords == null || amount <= 0)
+                return;
+
+            var seen = new HashSet<HexAxialCoord>();
+            foreach (var coord in coords)
+            {
+                if (!seen.Add(coord))
+                    continue;
+                if (!grid.TryGetTile(coord, out var tile) || tile == null || !tile.HasRuin)
+                    continue;
+
+                tile.DamageStructure(amount, out bool destroyed);
+                tile.FlashClick();
+                if (destroyed)
+                    Debug.Log($"Ruin at {coord.q},{coord.r} was destroyed.");
+            }
         }
 
         private void ApplyAttackDamage(HexBattleUnit source, HexBattleUnit target, int amount)
@@ -2479,9 +3835,31 @@ namespace HexDemo
                 return false;
 
             if (!TryGetRequiredAttackTarget(source, out var requiredTarget))
+                return HasLineOfSight(source.State.coord, candidate.State.coord);
+
+            return candidate == requiredTarget && HasLineOfSight(source.State.coord, candidate.State.coord);
+        }
+
+        private bool HasLineOfSight(HexAxialCoord sourceCoord, HexAxialCoord targetCoord)
+        {
+            if (grid == null)
                 return true;
 
-            return candidate == requiredTarget;
+            int distance = HexAxialCoord.Distance(sourceCoord, targetCoord);
+            if (distance <= 1)
+                return true;
+
+            var lineCoords = HexBattlePathing.GetLineCoords(grid, sourceCoord, targetCoord, distance);
+            for (int i = 0; i < lineCoords.Count; i++)
+            {
+                var coord = lineCoords[i];
+                if (coord.Equals(targetCoord))
+                    return true;
+                if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksLineOfSight)
+                    return false;
+            }
+
+            return true;
         }
 
         private bool TryGetRequiredAttackTarget(HexBattleUnit source, out HexBattleUnit requiredTarget)
@@ -2684,8 +4062,15 @@ namespace HexDemo
             int result = baseDamage;
             if (source != null && source.State != null)
             {
+                if (source.State.warriorNextAttackDamageBonus > 0)
+                {
+                    result += source.State.warriorNextAttackDamageBonus;
+                    source.State.warriorNextAttackDamageBonus = 0;
+                }
                 if (source.State.weak > 0)
                     result = Mathf.FloorToInt(result * 0.75f);
+                if (source.State.warriorDamageMultiplierThisTurn > 1)
+                    result *= source.State.warriorDamageMultiplierThisTurn;
                 if (source.State.vigor > 0)
                 {
                     result += source.State.vigor;
@@ -2716,6 +4101,8 @@ namespace HexDemo
                 builder.Append($"  Toughness {unit.State.toughness}");
             if (unit.State.vigor > 0)
                 builder.Append($"  Vigor {unit.State.vigor}");
+            if (unit.State.vampirism > 0)
+                builder.Append($"  Lifesteal {unit.State.vampirism}");
             if (unit.State.bleed > 0)
                 builder.Append($"  Bleed {unit.State.bleed}");
             if (unit.State.vulnerable > 0)
@@ -2788,14 +4175,30 @@ namespace HexDemo
                 builder.Append($"  Form {unit.State.druidForm}");
         }
 
-        private static void AppendEnemyIntent(StringBuilder builder, HexBattleUnit enemy)
+        private void AppendEnemyIntent(StringBuilder builder, HexBattleUnit enemy)
         {
             if (enemy == null || enemy.State == null || enemy.State.faction != HexBattleFaction.Enemy)
                 return;
+
+            builder.Append("  Intent ");
+            if (_enemyIntentSlots.TryGetValue(enemy, out var slots) && slots != null && slots.Count > 0)
+            {
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    if (i > 0)
+                        builder.Append(" > ");
+
+                    var slot = slots[i];
+                    builder.Append(slot.slotKind);
+                    builder.Append(':');
+                    builder.Append(slot.card?.definition != null ? slot.card.definition.displayName : "?");
+                }
+                return;
+            }
+
             if (enemy.Deck.Hand.Count == 0)
                 return;
 
-            builder.Append("  Intent ");
             for (int i = 0; i < enemy.Deck.Hand.Count; i++)
             {
                 if (i > 0)
@@ -2872,6 +4275,12 @@ namespace HexDemo
 
         private bool IsMovementBlocked(HexAxialCoord coord, HexBattleUnit movingUnit)
         {
+            if (grid == null || !grid.IsCoordInside(coord))
+                return true;
+
+            if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksMovement)
+                return true;
+
             if (CanIgnoreOccupiedTilesWhileMoving(movingUnit))
                 return false;
 
@@ -2880,6 +4289,12 @@ namespace HexDemo
 
         private bool IsForcedMovementBlocked(HexAxialCoord coord, HexBattleUnit movingUnit)
         {
+            if (grid == null || !grid.IsCoordInside(coord))
+                return true;
+
+            if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksMovement)
+                return true;
+
             return IsOccupied(coord, movingUnit) || HasSceneObstacleAtCoord(coord, movingUnit);
         }
 
@@ -3177,6 +4592,12 @@ namespace HexDemo
                 if (seen.Add(current))
                     result.Add(current);
 
+                bool blocksLine = grid.TryGetTile(current, out var currentTile) &&
+                                  currentTile != null &&
+                                  currentTile.BlocksLineOfSight;
+                if (blocksLine)
+                    break;
+
                 if (width <= 0)
                     continue;
 
@@ -3391,7 +4812,7 @@ namespace HexDemo
             if (grid == null)
                 return;
 
-            if (_draggedCard != null || _currentTurn != HexBattleFaction.Player || _busy || !_playerUnit.IsAlive)
+            if (_draggedCard == null || !IsTileActionCard(_draggedCard.definition) || _currentTurn != HexBattleFaction.Player || _busy || !_playerUnit.IsAlive)
             {
                 ClearMovementHighlights();
                 return;
@@ -3407,7 +4828,8 @@ namespace HexDemo
                 return;
             }
 
-            var reachable = GetReachableCosts(_playerUnit);
+            int cardMoveRange = Mathf.Max(1, _draggedCard.definition.amount);
+            var reachable = GetReachableCosts(_playerUnit, cardMoveRange);
             bool showGlobalReachable = _hoveredTile == null || _hoveredTile.coord.Equals(_playerUnit.State.coord);
             foreach (var tile in grid.Tiles.Values)
             {
@@ -3424,13 +4846,13 @@ namespace HexDemo
                 }
 
                 bool canReach = reachable.TryGetValue(tile.coord, out int cost) &&
-                    cost <= _playerUnit.State.currentMovePoints &&
+                    cost <= cardMoveRange &&
                     !IsOccupied(tile.coord, _playerUnit);
                 tile.SetMoveIndicator(canReach, canReach);
             }
 
             if (_hoveredTile != null && !_hoveredTile.coord.Equals(_playerUnit.State.coord))
-                ApplyMovementPreview(reachable, _hoveredTile.coord);
+                ApplyMovementPreview(reachable, _hoveredTile.coord, cardMoveRange);
             else
             {
                 foreach (var tile in grid.Tiles.Values)
@@ -3450,7 +4872,7 @@ namespace HexDemo
             }
         }
 
-        private void ApplyMovementPreview(Dictionary<HexAxialCoord, int> reachable, HexAxialCoord hoveredCoord)
+        private void ApplyMovementPreview(Dictionary<HexAxialCoord, int> reachable, HexAxialCoord hoveredCoord, int maxMoveCost)
         {
             foreach (var tile in grid.Tiles.Values)
                 tile.SetPathPreview(false, false, false);
@@ -3462,11 +4884,11 @@ namespace HexDemo
                 return;
             }
 
-            var path = BuildMovementPath(_playerUnit, hoveredCoord);
+            var path = BuildCardMovementPath(_playerUnit, hoveredCoord, maxMoveCost);
             bool canReach = path != null &&
                             path.Count >= 2 &&
                             reachable.TryGetValue(hoveredCoord, out int hoveredCost) &&
-                            hoveredCost <= _playerUnit.State.currentMovePoints;
+                            hoveredCost <= maxMoveCost;
 
             if (!canReach)
             {
@@ -3487,6 +4909,11 @@ namespace HexDemo
 
         private Dictionary<HexAxialCoord, int> GetReachableCosts(HexBattleUnit unit)
         {
+            return GetReachableCosts(unit, unit != null ? unit.State.currentMovePoints : 0);
+        }
+
+        private Dictionary<HexAxialCoord, int> GetReachableCosts(HexBattleUnit unit, int maxMoveCost)
+        {
             if (unit == null)
                 return new Dictionary<HexAxialCoord, int>();
 
@@ -3505,7 +4932,7 @@ namespace HexDemo
                         continue;
 
                     int distance = HexAxialCoord.Distance(unit.State.coord, tile.coord);
-                    if (distance <= unit.State.currentMovePoints)
+                    if (distance <= maxMoveCost)
                         jumped[tile.coord] = distance;
                 }
 
@@ -3520,7 +4947,7 @@ namespace HexDemo
             {
                 var current = frontier.Dequeue();
                 int currentCost = result[current];
-                if (currentCost >= unit.State.currentMovePoints)
+                if (currentCost >= maxMoveCost)
                     continue;
 
                 foreach (var neighbor in grid.GetNeighbors(current))

@@ -138,6 +138,7 @@ namespace HexDemo
             State.humility = 0;
             State.luck = 0;
             State.vigor = 0;
+            State.vampirism = 0;
             State.holyShield = 0;
             State.immunity = 0;
             State.invincible = 0;
@@ -171,6 +172,30 @@ namespace HexDemo
             State.drawOnExhaust = false;
             State.gainMoveOnStrengthOrToughness = false;
             State.armorOnExhaustCost = 0;
+            State.retainArmorBetweenTurns = false;
+            State.warriorBurnEventThisTurn = false;
+            State.warriorFearEventThisTurn = false;
+            State.warriorBleedEventThisTurn = false;
+            State.warriorMoveEventThisTurn = false;
+            State.warriorBurnFinisherUsedThisTurn = false;
+            State.warriorFearFinisherUsedThisTurn = false;
+            State.warriorBleedFinisherUsedThisTurn = false;
+            State.warriorMoveFinisherUsedThisTurn = false;
+            State.warriorBleedEventsThisBattle = 0;
+            State.warriorBleedEventsThisTurn = 0;
+            State.warriorStrengthPerTurn = 0;
+            State.warriorBloodPactActive = false;
+            State.warriorNextAttackDamageBonus = 0;
+            State.warriorBloodForgedBonus = 0;
+            State.warriorDelayedBleed = 0;
+            State.warriorDamageMultiplierThisTurn = 0;
+            State.warriorInfernoHeart = false;
+            State.warriorDrawOnFearAdded = false;
+            State.warriorExtraFearFirstEachTurn = false;
+            State.warriorExtraFearUsedThisTurn = false;
+            State.warriorGainStrengthOnFearPlayed = false;
+            State.warriorArmorOnFearAdded = false;
+            State.warriorHealOnBleedGain = false;
             State.axeAppliesArmorBreak = false;
             State.hammerDoubleArmorDamage = false;
             State.swordAppliesBrittle = false;
@@ -194,10 +219,16 @@ namespace HexDemo
         public void BeginTurn()
         {
             CanActThisTurn = true;
-            if (State.armor > 0)
+            if (State.armor > 0 && !State.retainArmorBetweenTurns)
             {
                 State.armor = 0;
                 RefreshHealthBar();
+            }
+
+            if (State.warriorDelayedBleed > 0)
+            {
+                ApplyBleed(State.warriorDelayedBleed);
+                State.warriorDelayedBleed = 0;
             }
 
             if (State.skillCooldown > 0)
@@ -254,6 +285,17 @@ namespace HexDemo
             State.weaponPassivesDoubleThisTurn = false;
             State.firstAttackBonusPending = State.firstAttackBurnAmount > 0;
             State.cardsPlayedThisTurn = 0;
+            State.warriorBurnEventThisTurn = false;
+            State.warriorFearEventThisTurn = false;
+            State.warriorBleedEventThisTurn = false;
+            State.warriorMoveEventThisTurn = false;
+            State.warriorBurnFinisherUsedThisTurn = false;
+            State.warriorFearFinisherUsedThisTurn = false;
+            State.warriorBleedFinisherUsedThisTurn = false;
+            State.warriorMoveFinisherUsedThisTurn = false;
+            State.warriorBleedEventsThisTurn = 0;
+            State.warriorExtraFearUsedThisTurn = false;
+            State.warriorDamageMultiplierThisTurn = 0;
             State.paralysisActiveThisTurn = State.paralysis;
             State.paralysis = 0;
             State.tauntActiveThisTurn = State.taunt;

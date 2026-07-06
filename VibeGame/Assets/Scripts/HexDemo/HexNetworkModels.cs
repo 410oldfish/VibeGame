@@ -135,6 +135,18 @@ namespace HexDemo
     }
 
     [Serializable]
+    public sealed class HexTerrainPatchPayload
+    {
+        public int q;
+        public int r;
+        public HexTerrainBaseType baseTerrain;
+        public HexTerrainStructureType structureType;
+        public int structureHp;
+        public HexTerrainPickupType pickupType;
+        public int pickupAmount;
+    }
+
+    [Serializable]
     public sealed class HexWeaponSkillPayload
     {
         public HexWeaponType weaponType;
