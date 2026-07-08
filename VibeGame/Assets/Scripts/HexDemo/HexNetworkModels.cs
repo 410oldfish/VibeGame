@@ -24,7 +24,6 @@ namespace HexDemo
         EnterMapNode = 3,
         MoveUnit = 4,
         PlayCard = 5,
-        UseWeaponSkill = 6,
         EndTurn = 7,
     }
 
@@ -146,9 +145,4 @@ namespace HexDemo
         public int pickupAmount;
     }
 
-    [Serializable]
-    public sealed class HexWeaponSkillPayload
-    {
-        public HexWeaponType weaponType;
-    }
 }

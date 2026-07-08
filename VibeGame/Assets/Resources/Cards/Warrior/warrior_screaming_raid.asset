@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: warrior_screaming_raid
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: warrior_screaming_raid
+  displayName: "\u60CA\u5578\u7A81\u88AD"
+  cardType: 0
+  profession: 1
+  effectType: 8
+  targetType: 1
+  energyCost: 1
+  amount: 15
+  range: 2
+  castRange: 2
+  effectRadius: 0
+  priority: 1
+  rarity: Uncommon
+  description: "\u6D88\u8017\u654C\u65B9\u610F\u56FE\u69FD1\u5F20\u6050\u60E7\u6807\u7B7E\u724C\uFF1B\u79FB\u52A82\u300115\u4F24\u3002"
+  color: {r: 0.38, g: 0.34, b: 0.58, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u585E\u724C"
+  - "\u6536\u675F"

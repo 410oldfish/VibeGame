@@ -18,6 +18,13 @@ namespace HexDemo
         private const string Starter02ControllerPath = "Assets/Animations/Starter02/Starter_02.controller";
         private const string TerrainTilePrefabPath = "Assets/Models/Terrain/HexCubeTile.prefab";
         private const string CampfirePrefabPath = "Assets/Models/SceneProp/low-poly-campfire/source/campfire.fbx";
+        private const string ProfessionSelectPrefabPath = "Assets/Prefabs/UI/Adventure/ProfessionSelectRoot.prefab";
+        private const string AdventureMapPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureMapRoot.prefab";
+        private const string AdventureOverlayModalPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureOverlayModal.prefab";
+        private const string AdventureBottomButtonPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureBottomButton.prefab";
+        private const string AdventureChoiceButtonPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureChoiceButton.prefab";
+        private const string AdventureShopOfferCardPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureShopOfferCard.prefab";
+        private const string AdventureRewardCardPrefabPath = "Assets/Prefabs/UI/Adventure/AdventureRewardCard.prefab";
 
         private readonly Dictionary<string, Button> _nodeButtons = new();
         private readonly HashSet<string> _visitedNodeIds = new();
@@ -115,6 +122,32 @@ namespace HexDemo
                 Destroy(_mapCanvas.gameObject);
             CleanupProfessionSelection();
 
+            if (TryBuildProfessionSelectionFromPrefab(out var background, out var title, out var subtitle, out var networkLabel, out var gridRoot))
+            {
+                title.alignment = TextAlignmentOptions.Center;
+                title.text = "选择职业";
+                subtitle.alignment = TextAlignmentOptions.Center;
+                subtitle.text = "职业会决定初始牌组，并限制后续奖励和商店出现的职业卡牌。";
+                networkLabel.alignment = TextAlignmentOptions.Center;
+                networkLabel.text = GetNetworkStatusText();
+
+                CreateProfessionCard(gridRoot.transform, HexCardProfession.Warrior, "战士", "武器切换、力量、击飞和范围攻击。", new Color(0.72f, 0.26f, 0.2f, 1f));
+                CreateProfessionCard(gridRoot.transform, HexCardProfession.Paladin, "骑士", "护甲、防守反击和神圣打击。", new Color(0.86f, 0.72f, 0.34f, 1f));
+                CreateProfessionCard(gridRoot.transform, HexCardProfession.Druid, "德鲁伊", "变形、地块效果、燃烧和自然控制。", new Color(0.32f, 0.62f, 0.34f, 1f));
+
+                if (_sceneCamera != null)
+                {
+                    _sceneCamera.orthographic = true;
+                    _sceneCamera.transform.position = new Vector3(0f, 0f, -10f);
+                    _sceneCamera.transform.rotation = Quaternion.identity;
+                    _sceneCamera.orthographicSize = 5.5f;
+                    _sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+                    _sceneCamera.backgroundColor = new Color(0.12f, 0.13f, 0.17f, 1f);
+                }
+
+                return;
+            }
+
             var canvasGO = new GameObject("ProfessionSelect_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             _professionCanvas = canvasGO.GetComponent<Canvas>();
             _professionCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -125,34 +158,34 @@ namespace HexDemo
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
 
-            var background = CreatePanel(canvasGO.transform, "Background", Vector2.zero, new Vector2(1920f, 1080f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            background.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 1f);
+            var backgroundLegacy = CreatePanel(canvasGO.transform, "Background", Vector2.zero, new Vector2(1920f, 1080f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            backgroundLegacy.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 1f);
 
-            var title = CreateText(background.transform, "Title", new Vector2(0f, -92f), new Vector2(900f, 70f), 42f, FontStyles.Bold);
-            title.alignment = TextAlignmentOptions.Center;
-            title.text = "\u9009\u62e9\u804c\u4e1a";
+            var titleLegacy = CreateText(backgroundLegacy.transform, "Title", new Vector2(0f, -92f), new Vector2(900f, 70f), 42f, FontStyles.Bold);
+            titleLegacy.alignment = TextAlignmentOptions.Center;
+            titleLegacy.text = "\u9009\u62e9\u804c\u4e1a";
 
-            var subtitle = CreateText(background.transform, "Subtitle", new Vector2(0f, -158f), new Vector2(960f, 44f), 24f, FontStyles.Normal);
-            subtitle.alignment = TextAlignmentOptions.Center;
-            subtitle.text = "\u804c\u4e1a\u4f1a\u51b3\u5b9a\u521d\u59cb\u724c\u7ec4\uff0c\u5e76\u9650\u5236\u540e\u7eed\u5956\u52b1\u548c\u5546\u5e97\u51fa\u73b0\u7684\u804c\u4e1a\u5361\u724c\u3002";
+            var subtitleLegacy = CreateText(backgroundLegacy.transform, "Subtitle", new Vector2(0f, -158f), new Vector2(960f, 44f), 24f, FontStyles.Normal);
+            subtitleLegacy.alignment = TextAlignmentOptions.Center;
+            subtitleLegacy.text = "\u804c\u4e1a\u4f1a\u51b3\u5b9a\u521d\u59cb\u724c\u7ec4\uff0c\u5e76\u9650\u5236\u540e\u7eed\u5956\u52b1\u548c\u5546\u5e97\u51fa\u73b0\u7684\u804c\u4e1a\u5361\u724c\u3002";
 
-            var networkLabel = CreateText(background.transform, "NetworkStatus", new Vector2(0f, -212f), new Vector2(960f, 34f), 21f, FontStyles.Bold);
-            networkLabel.alignment = TextAlignmentOptions.Center;
-            networkLabel.text = GetNetworkStatusText();
+            var networkLabelLegacy = CreateText(backgroundLegacy.transform, "NetworkStatus", new Vector2(0f, -212f), new Vector2(960f, 34f), 21f, FontStyles.Bold);
+            networkLabelLegacy.alignment = TextAlignmentOptions.Center;
+            networkLabelLegacy.text = GetNetworkStatusText();
 
-            var gridRoot = CreatePanel(background.transform, "ProfessionGrid", new Vector2(0f, -20f), new Vector2(1060f, 360f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            gridRoot.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
+            var gridRootLegacy = CreatePanel(backgroundLegacy.transform, "ProfessionGrid", new Vector2(0f, -20f), new Vector2(1060f, 360f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            gridRootLegacy.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
 
-            var layout = gridRoot.gameObject.AddComponent<GridLayoutGroup>();
+            var layout = gridRootLegacy.gameObject.AddComponent<GridLayoutGroup>();
             layout.cellSize = new Vector2(320f, 300f);
             layout.spacing = new Vector2(28f, 0f);
             layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             layout.constraintCount = 3;
             layout.childAlignment = TextAnchor.MiddleCenter;
 
-            CreateProfessionCard(gridRoot.transform, HexCardProfession.Warrior, "\u6218\u58eb", "\u6b66\u5668\u5207\u6362\u3001\u529b\u91cf\u3001\u51fb\u98de\u548c\u8303\u56f4\u653b\u51fb\u3002", new Color(0.72f, 0.26f, 0.2f, 1f));
-            CreateProfessionCard(gridRoot.transform, HexCardProfession.Paladin, "\u9a91\u58eb", "\u62a4\u7532\u3001\u9632\u5b88\u53cd\u51fb\u548c\u795e\u5723\u6253\u51fb\u3002", new Color(0.86f, 0.72f, 0.34f, 1f));
-            CreateProfessionCard(gridRoot.transform, HexCardProfession.Druid, "\u5fb7\u9c81\u4f0a", "\u53d8\u5f62\u3001\u5730\u5757\u6548\u679c\u3001\u71c3\u70e7\u548c\u81ea\u7136\u63a7\u5236\u3002", new Color(0.32f, 0.62f, 0.34f, 1f));
+            CreateProfessionCard(gridRootLegacy.transform, HexCardProfession.Warrior, "\u6218\u58eb", "\u6b66\u5668\u5207\u6362\u3001\u529b\u91cf\u3001\u51fb\u98de\u548c\u8303\u56f4\u653b\u51fb\u3002", new Color(0.72f, 0.26f, 0.2f, 1f));
+            CreateProfessionCard(gridRootLegacy.transform, HexCardProfession.Paladin, "\u9a91\u58eb", "\u62a4\u7532\u3001\u9632\u5b88\u53cd\u51fb\u548c\u795e\u5723\u6253\u51fb\u3002", new Color(0.86f, 0.72f, 0.34f, 1f));
+            CreateProfessionCard(gridRootLegacy.transform, HexCardProfession.Druid, "\u5fb7\u9c81\u4f0a", "\u53d8\u5f62\u3001\u5730\u5757\u6548\u679c\u3001\u71c3\u70e7\u548c\u81ea\u7136\u63a7\u5236\u3002", new Color(0.32f, 0.62f, 0.34f, 1f));
 
             if (_sceneCamera != null)
             {
@@ -240,6 +273,16 @@ namespace HexDemo
 
         private void BuildMapCanvas()
         {
+            if (TryBuildMapCanvasFromPrefab())
+            {
+                BuildMapEdges();
+                BuildMapNodes();
+                UpdateMapPanBounds();
+                ApplyMapPan();
+                RefreshMapState();
+                return;
+            }
+
             var canvasGO = new GameObject("AdventureMap_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             _mapCanvas = canvasGO.GetComponent<Canvas>();
             _mapCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -586,18 +629,32 @@ namespace HexDemo
                 for (int i = 0; i < offers.Count; i++)
                 {
                     var offer = offers[i];
-                    var cardPanel = CreatePanel(cardGrid.transform, $"Offer_{i}", Vector2.zero, new Vector2(176f, 220f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-                    cardPanel.GetComponent<Image>().color = Color.Lerp(offer.card.color, Color.black, 0.12f);
+                    var cardPanel = CreateShopOfferCardRoot(cardGrid.transform, $"Offer_{i}");
+                    var cardImage = cardPanel.GetComponent<Image>();
+                    if (cardImage != null)
+                        cardImage.color = Color.Lerp(offer.card.color, Color.black, 0.12f);
 
-                    var cardTitle = CreateText(cardPanel.transform, "Title", new Vector2(14f, -14f), new Vector2(140f, 32f), 22f, FontStyles.Bold);
+                    var cardTitle = cardPanel.Find("Title")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Title", new Vector2(14f, -14f), new Vector2(140f, 32f), 22f, FontStyles.Bold);
+                    ConfigureTopLeftText(cardTitle.rectTransform, new Vector2(14f, -14f), new Vector2(140f, 32f), 22f, FontStyles.Bold);
                     cardTitle.text = offer.card.displayName;
-                    var body = CreateText(cardPanel.transform, "Body", new Vector2(14f, -58f), new Vector2(146f, 72f), 18f, FontStyles.Normal);
+
+                    var body = cardPanel.Find("Body")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Body", new Vector2(14f, -58f), new Vector2(146f, 72f), 18f, FontStyles.Normal);
+                    ConfigureTopLeftText(body.rectTransform, new Vector2(14f, -58f), new Vector2(146f, 72f), 18f, FontStyles.Normal);
                     body.text = offer.card.effectType == HexCardEffectType.Attack
                         ? $"Deal {offer.card.amount}\nRange {offer.card.range}"
                         : $"Gain {offer.card.amount} Armor";
 
-                    var buyPanel = CreatePanel(cardPanel.transform, "BuyPanel", new Vector2(0f, 12f), new Vector2(144f, 48f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-                    var buyButton = buyPanel.gameObject.AddComponent<Button>();
+                    var buyPanel = cardPanel.Find("BuyPanel")?.GetComponent<RectTransform>()
+                        ?? CreatePanel(cardPanel.transform, "BuyPanel", new Vector2(0f, 12f), new Vector2(144f, 48f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+                    buyPanel.anchorMin = new Vector2(0.5f, 0f);
+                    buyPanel.anchorMax = new Vector2(0.5f, 0f);
+                    buyPanel.pivot = new Vector2(0.5f, 0f);
+                    buyPanel.anchoredPosition = new Vector2(0f, 12f);
+                    buyPanel.sizeDelta = new Vector2(144f, 48f);
+                    var buyButton = buyPanel.GetComponent<Button>() ?? buyPanel.gameObject.AddComponent<Button>();
+                    buyButton.onClick.RemoveAllListeners();
                     int offerIndex = i;
                     buyButton.onClick.AddListener(() =>
                     {
@@ -609,7 +666,18 @@ namespace HexDemo
                         _runState.deckDefinitions.Add(selected.card);
                         RefreshOverlayShop(overlay, offers);
                     });
-                    var buyLabel = CreateText(buyPanel.transform, "BuyLabel", Vector2.zero, new Vector2(144f, 48f), 20f, FontStyles.Bold);
+                    var buyLabel = buyPanel.Find("BuyLabel")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(buyPanel.transform, "BuyLabel", Vector2.zero, new Vector2(144f, 48f), 20f, FontStyles.Bold);
+                    var buyLabelRect = buyLabel.rectTransform;
+                    buyLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
+                    buyLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
+                    buyLabelRect.pivot = new Vector2(0.5f, 0.5f);
+                    buyLabelRect.anchoredPosition = Vector2.zero;
+                    buyLabelRect.sizeDelta = new Vector2(144f, 48f);
+                    HexTMPFontProvider.ApplyTo(buyLabel);
+                    buyLabel.fontSize = 20f;
+                    buyLabel.fontStyle = FontStyles.Bold;
+                    buyLabel.color = Color.white;
                     buyLabel.alignment = TextAlignmentOptions.Center;
                     buyLabel.text = $"Buy {offer.price}";
                 }
@@ -683,39 +751,103 @@ namespace HexDemo
                 for (int i = 0; i < rewards.Count; i++)
                 {
                     var reward = rewards[i];
-                    var cardPanel = CreatePanel(cardGrid.transform, $"Reward_{i}", Vector2.zero, new Vector2(240f, 300f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-                    cardPanel.GetComponent<Image>().color = Color.Lerp(reward.color, Color.black, 0.08f);
+                    var cardPanel = CreateRewardCardRoot(cardGrid.transform, $"Reward_{i}");
+                    var cardImage = cardPanel.GetComponent<Image>();
+                    if (cardImage != null)
+                        cardImage.color = Color.Lerp(reward.color, Color.black, 0.08f);
 
-                    var cost = CreateText(cardPanel.transform, "Cost", new Vector2(16f, -14f), new Vector2(48f, 34f), 26f, FontStyles.Bold);
+                    var cost = cardPanel.Find("Cost")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Cost", new Vector2(16f, -14f), new Vector2(48f, 34f), 26f, FontStyles.Bold);
+                    ConfigureTopLeftText(cost.rectTransform, new Vector2(16f, -14f), new Vector2(48f, 34f), 26f, FontStyles.Bold);
                     cost.text = reward.energyCost < 0 ? "X" : reward.energyCost.ToString();
 
-                    var rarity = CreateText(cardPanel.transform, "Rarity", new Vector2(78f, -16f), new Vector2(140f, 28f), 18f, FontStyles.Bold);
+                    var rarity = cardPanel.Find("Rarity")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Rarity", new Vector2(78f, -16f), new Vector2(140f, 28f), 18f, FontStyles.Bold);
+                    ConfigureTopLeftText(rarity.rectTransform, new Vector2(78f, -16f), new Vector2(140f, 28f), 18f, FontStyles.Bold);
                     rarity.text = reward.rarity;
                     rarity.alignment = TextAlignmentOptions.TopRight;
 
-                    var title = CreateText(cardPanel.transform, "Title", new Vector2(18f, -50f), new Vector2(204f, 58f), 24f, FontStyles.Bold);
+                    var title = cardPanel.Find("Title")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Title", new Vector2(18f, -50f), new Vector2(204f, 58f), 24f, FontStyles.Bold);
+                    ConfigureTopLeftText(title.rectTransform, new Vector2(18f, -50f), new Vector2(204f, 58f), 24f, FontStyles.Bold);
                     title.text = reward.displayName;
 
-                    var meta = CreateText(cardPanel.transform, "Meta", new Vector2(18f, -98f), new Vector2(204f, 40f), 17f, FontStyles.Bold);
+                    var meta = cardPanel.Find("Meta")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Meta", new Vector2(18f, -98f), new Vector2(204f, 40f), 17f, FontStyles.Bold);
+                    ConfigureTopLeftText(meta.rectTransform, new Vector2(18f, -98f), new Vector2(204f, 40f), 17f, FontStyles.Bold);
                     meta.text = $"{reward.cardType}   Cast {reward.castRange}   Area {reward.effectRadius}";
 
-                    var bodyText = CreateText(cardPanel.transform, "Body", new Vector2(18f, -138f), new Vector2(204f, 92f), 18f, FontStyles.Normal);
+                    var bodyText = cardPanel.Find("Body")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(cardPanel.transform, "Body", new Vector2(18f, -138f), new Vector2(204f, 92f), 18f, FontStyles.Normal);
+                    ConfigureTopLeftText(bodyText.rectTransform, new Vector2(18f, -138f), new Vector2(204f, 92f), 18f, FontStyles.Normal);
                     bodyText.text = string.IsNullOrWhiteSpace(reward.description)
                         ? (reward.effectType == HexCardEffectType.Attack ? $"Deal {reward.amount} damage." : $"Gain {reward.amount} armor.")
                         : reward.description;
 
-                    var pickButtonPanel = CreatePanel(cardPanel.transform, "PickButton", new Vector2(0f, 14f), new Vector2(180f, 50f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-                    var pickButton = pickButtonPanel.gameObject.AddComponent<Button>();
+                    var pickButtonPanel = cardPanel.Find("PickButton")?.GetComponent<RectTransform>()
+                        ?? CreatePanel(cardPanel.transform, "PickButton", new Vector2(0f, 14f), new Vector2(180f, 50f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+                    pickButtonPanel.anchorMin = new Vector2(0.5f, 0f);
+                    pickButtonPanel.anchorMax = new Vector2(0.5f, 0f);
+                    pickButtonPanel.pivot = new Vector2(0.5f, 0f);
+                    pickButtonPanel.anchoredPosition = new Vector2(0f, 14f);
+                    pickButtonPanel.sizeDelta = new Vector2(180f, 50f);
+                    var pickButton = pickButtonPanel.GetComponent<Button>() ?? pickButtonPanel.gameObject.AddComponent<Button>();
+                    pickButton.onClick.RemoveAllListeners();
                     pickButton.onClick.AddListener(() =>
                     {
                         _runState.deckDefinitions.Add(reward);
                         CompleteRoomAndReturnToMap();
                     });
-                    var pickLabel = CreateText(pickButtonPanel.transform, "Label", Vector2.zero, new Vector2(180f, 50f), 22f, FontStyles.Bold);
+                    var pickLabel = pickButtonPanel.Find("Label")?.GetComponent<TextMeshProUGUI>()
+                        ?? CreateText(pickButtonPanel.transform, "Label", Vector2.zero, new Vector2(180f, 50f), 22f, FontStyles.Bold);
+                    var pickLabelRect = pickLabel.rectTransform;
+                    pickLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
+                    pickLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
+                    pickLabelRect.pivot = new Vector2(0.5f, 0.5f);
+                    pickLabelRect.anchoredPosition = Vector2.zero;
+                    pickLabelRect.sizeDelta = new Vector2(180f, 50f);
+                    HexTMPFontProvider.ApplyTo(pickLabel);
+                    pickLabel.fontSize = 22f;
+                    pickLabel.fontStyle = FontStyles.Bold;
+                    pickLabel.color = Color.white;
                     pickLabel.alignment = TextAlignmentOptions.Center;
                     pickLabel.text = "Choose";
                 }
             });
+        }
+
+        private RectTransform CreateShopOfferCardRoot(Transform parent, string instanceName)
+        {
+            var prefab = LoadAdventureShopOfferCardPrefab();
+            if (prefab == null)
+                return CreatePanel(parent, instanceName, Vector2.zero, new Vector2(176f, 220f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+            var go = Instantiate(prefab, parent);
+            go.name = instanceName;
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(176f, 220f);
+            return rect;
+        }
+
+        private RectTransform CreateRewardCardRoot(Transform parent, string instanceName)
+        {
+            var prefab = LoadAdventureRewardCardPrefab();
+            if (prefab == null)
+                return CreatePanel(parent, instanceName, Vector2.zero, new Vector2(240f, 300f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+            var go = Instantiate(prefab, parent);
+            go.name = instanceName;
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(240f, 300f);
+            return rect;
         }
 
         private void BuildOverlay(string title, System.Action<RectTransform> bodyBuilder)
@@ -726,9 +858,23 @@ namespace HexDemo
             _overlayRoot.gameObject.SetActive(true);
             _overlayRoot.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.4f);
 
-            var modal = CreatePanel(_overlayRoot.transform, "Modal", Vector2.zero, new Vector2(920f, 640f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            modal.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
-            var titleText = CreateText(modal.transform, "Title", new Vector2(36f, -28f), new Vector2(600f, 42f), 34f, FontStyles.Bold);
+            var modal = CreateOverlayModalRoot();
+            var titleText = modal.Find("Title")?.GetComponent<TextMeshProUGUI>()
+                ?? CreateText(modal.transform, "Title", new Vector2(36f, -28f), new Vector2(600f, 42f), 34f, FontStyles.Bold);
+            if (modal.Find("Title") != null)
+            {
+                var titleRect = titleText.rectTransform;
+                titleRect.anchorMin = new Vector2(0f, 1f);
+                titleRect.anchorMax = new Vector2(0f, 1f);
+                titleRect.pivot = new Vector2(0f, 1f);
+                titleRect.anchoredPosition = new Vector2(36f, -28f);
+                titleRect.sizeDelta = new Vector2(600f, 42f);
+                HexTMPFontProvider.ApplyTo(titleText);
+                titleText.fontSize = 34f;
+                titleText.fontStyle = FontStyles.Bold;
+                titleText.color = Color.white;
+                titleText.alignment = TextAlignmentOptions.TopLeft;
+            }
             titleText.text = title;
             bodyBuilder?.Invoke(modal);
         }
@@ -746,10 +892,44 @@ namespace HexDemo
 
         private RectTransform CreateBottomButton(Transform parent, string text, UnityEngine.Events.UnityAction onClick)
         {
-            var buttonPanel = CreatePanel(parent, $"{text}_Button", new Vector2(0f, 24f), new Vector2(240f, 70f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-            var button = buttonPanel.gameObject.AddComponent<Button>();
+            RectTransform buttonPanel;
+            Button button;
+            var prefab = LoadAdventureBottomButtonPrefab();
+            if (prefab != null)
+            {
+                var instance = Instantiate(prefab, parent);
+                instance.name = $"{text}_Button";
+                buttonPanel = instance.GetComponent<RectTransform>();
+                button = instance.GetComponent<Button>() ?? instance.AddComponent<Button>();
+                buttonPanel.anchorMin = new Vector2(0.5f, 0f);
+                buttonPanel.anchorMax = new Vector2(0.5f, 0f);
+                buttonPanel.pivot = new Vector2(0.5f, 0f);
+                buttonPanel.anchoredPosition = new Vector2(0f, 24f);
+                buttonPanel.sizeDelta = new Vector2(240f, 70f);
+                var image = instance.GetComponent<Image>();
+                if (image != null)
+                    image.color = new Color(0.16f, 0.17f, 0.22f, 0.9f);
+            }
+            else
+            {
+                buttonPanel = CreatePanel(parent, $"{text}_Button", new Vector2(0f, 24f), new Vector2(240f, 70f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+                button = buttonPanel.gameObject.AddComponent<Button>();
+            }
+
+            button.onClick.RemoveAllListeners();
             button.onClick.AddListener(onClick);
-            var label = CreateText(buttonPanel.transform, "Label", Vector2.zero, new Vector2(240f, 70f), 26f, FontStyles.Bold);
+            var label = buttonPanel.Find("Label")?.GetComponent<TextMeshProUGUI>()
+                ?? CreateText(buttonPanel.transform, "Label", Vector2.zero, new Vector2(240f, 70f), 26f, FontStyles.Bold);
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.anchoredPosition = Vector2.zero;
+            labelRect.sizeDelta = new Vector2(240f, 70f);
+            HexTMPFontProvider.ApplyTo(label);
+            label.fontSize = 26f;
+            label.fontStyle = FontStyles.Bold;
+            label.color = Color.white;
             label.alignment = TextAlignmentOptions.Center;
             label.text = text;
             return buttonPanel;
@@ -757,12 +937,243 @@ namespace HexDemo
 
         private void CreateChoiceButton(Transform parent, Vector2 anchoredPosition, string label, UnityEngine.Events.UnityAction onClick)
         {
-            var panel = CreatePanel(parent, $"{label}_Choice", anchoredPosition, new Vector2(420f, 58f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            var button = panel.gameObject.AddComponent<Button>();
+            RectTransform panel;
+            Button button;
+            var prefab = LoadAdventureChoiceButtonPrefab();
+            if (prefab != null)
+            {
+                var instance = Instantiate(prefab, parent);
+                instance.name = $"{label}_Choice";
+                panel = instance.GetComponent<RectTransform>();
+                button = instance.GetComponent<Button>() ?? instance.AddComponent<Button>();
+                panel.anchorMin = new Vector2(0.5f, 0.5f);
+                panel.anchorMax = new Vector2(0.5f, 0.5f);
+                panel.pivot = new Vector2(0.5f, 0.5f);
+                panel.anchoredPosition = anchoredPosition;
+                panel.sizeDelta = new Vector2(420f, 58f);
+                var image = instance.GetComponent<Image>();
+                if (image != null)
+                    image.color = new Color(0.16f, 0.17f, 0.22f, 0.9f);
+            }
+            else
+            {
+                panel = CreatePanel(parent, $"{label}_Choice", anchoredPosition, new Vector2(420f, 58f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                button = panel.gameObject.AddComponent<Button>();
+            }
+
+            button.onClick.RemoveAllListeners();
             button.onClick.AddListener(onClick);
-            var text = CreateText(panel.transform, "Label", Vector2.zero, new Vector2(420f, 58f), 24f, FontStyles.Bold);
+            var text = panel.Find("Label")?.GetComponent<TextMeshProUGUI>()
+                ?? CreateText(panel.transform, "Label", Vector2.zero, new Vector2(420f, 58f), 24f, FontStyles.Bold);
+            var textRect = text.rectTransform;
+            textRect.anchorMin = new Vector2(0.5f, 0.5f);
+            textRect.anchorMax = new Vector2(0.5f, 0.5f);
+            textRect.pivot = new Vector2(0.5f, 0.5f);
+            textRect.anchoredPosition = Vector2.zero;
+            textRect.sizeDelta = new Vector2(420f, 58f);
+            HexTMPFontProvider.ApplyTo(text);
+            text.fontSize = 24f;
+            text.fontStyle = FontStyles.Bold;
+            text.color = Color.white;
             text.alignment = TextAlignmentOptions.Center;
             text.text = label;
+        }
+
+        private RectTransform CreateOverlayModalRoot()
+        {
+            var prefab = LoadAdventureOverlayModalPrefab();
+            if (prefab == null)
+            {
+                var modal = CreatePanel(_overlayRoot.transform, "Modal", Vector2.zero, new Vector2(920f, 640f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                modal.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
+                return modal;
+            }
+
+            var instance = Instantiate(prefab, _overlayRoot.transform);
+            instance.name = "Modal";
+            var rect = instance.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(920f, 640f);
+            var image = instance.GetComponent<Image>();
+            if (image != null)
+                image.color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
+            return rect;
+        }
+
+        private bool TryBuildProfessionSelectionFromPrefab(out RectTransform background, out TextMeshProUGUI title, out TextMeshProUGUI subtitle, out TextMeshProUGUI networkLabel, out RectTransform gridRoot)
+        {
+            background = null;
+            title = null;
+            subtitle = null;
+            networkLabel = null;
+            gridRoot = null;
+
+            var prefab = LoadProfessionSelectPrefab();
+            if (prefab == null)
+                return false;
+
+            var instance = Instantiate(prefab);
+            _professionCanvas = instance.GetComponent<Canvas>();
+            if (_professionCanvas == null)
+            {
+                Destroy(instance);
+                _professionCanvas = null;
+                return false;
+            }
+
+            _professionCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _professionCanvas.sortingOrder = 120;
+
+            var scaler = instance.GetComponent<CanvasScaler>();
+            if (scaler == null)
+                scaler = instance.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            if (instance.GetComponent<GraphicRaycaster>() == null)
+                instance.AddComponent<GraphicRaycaster>();
+
+            background = FindByPath<RectTransform>(_professionCanvas.transform, "Background");
+            title = FindByPath<TextMeshProUGUI>(_professionCanvas.transform, "Background/Title");
+            subtitle = FindByPath<TextMeshProUGUI>(_professionCanvas.transform, "Background/Subtitle");
+            networkLabel = FindByPath<TextMeshProUGUI>(_professionCanvas.transform, "Background/NetworkStatus");
+            gridRoot = FindByPath<RectTransform>(_professionCanvas.transform, "Background/ProfessionGrid");
+            if (background == null || title == null || subtitle == null || networkLabel == null || gridRoot == null)
+            {
+                Destroy(instance);
+                _professionCanvas = null;
+                return false;
+            }
+
+            background.anchorMin = new Vector2(0.5f, 0.5f);
+            background.anchorMax = new Vector2(0.5f, 0.5f);
+            background.pivot = new Vector2(0.5f, 0.5f);
+            background.anchoredPosition = Vector2.zero;
+            background.sizeDelta = new Vector2(1920f, 1080f);
+            var bgImage = background.GetComponent<Image>();
+            if (bgImage != null)
+                bgImage.color = new Color(0.12f, 0.13f, 0.17f, 1f);
+
+            ConfigureTopLeftText(title.rectTransform, new Vector2(0f, -92f), new Vector2(900f, 70f), 42f, FontStyles.Bold);
+            ConfigureTopLeftText(subtitle.rectTransform, new Vector2(0f, -158f), new Vector2(960f, 44f), 24f, FontStyles.Normal);
+            ConfigureTopLeftText(networkLabel.rectTransform, new Vector2(0f, -212f), new Vector2(960f, 34f), 21f, FontStyles.Bold);
+
+            gridRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            gridRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            gridRoot.pivot = new Vector2(0.5f, 0.5f);
+            gridRoot.anchoredPosition = new Vector2(0f, -20f);
+            gridRoot.sizeDelta = new Vector2(1060f, 360f);
+            var gridImage = gridRoot.GetComponent<Image>();
+            if (gridImage != null)
+                gridImage.color = new Color(1f, 1f, 1f, 0.02f);
+
+            var gridLayout = gridRoot.GetComponent<GridLayoutGroup>() ?? gridRoot.gameObject.AddComponent<GridLayoutGroup>();
+            gridLayout.cellSize = new Vector2(320f, 300f);
+            gridLayout.spacing = new Vector2(28f, 0f);
+            gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            gridLayout.constraintCount = 3;
+            gridLayout.childAlignment = TextAnchor.MiddleCenter;
+            return true;
+        }
+
+        private bool TryBuildMapCanvasFromPrefab()
+        {
+            var prefab = LoadAdventureMapPrefab();
+            if (prefab == null)
+                return false;
+
+            var instance = Instantiate(prefab);
+            _mapCanvas = instance.GetComponent<Canvas>();
+            if (_mapCanvas == null)
+            {
+                Destroy(instance);
+                _mapCanvas = null;
+                return false;
+            }
+
+            _mapCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _mapCanvas.sortingOrder = 80;
+            var scaler = instance.GetComponent<CanvasScaler>() ?? instance.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+            if (instance.GetComponent<GraphicRaycaster>() == null)
+                instance.AddComponent<GraphicRaycaster>();
+
+            var background = FindByPath<RectTransform>(_mapCanvas.transform, "Background");
+            var title = FindByPath<TextMeshProUGUI>(_mapCanvas.transform, "Background/Title");
+            _runSummaryLabel = FindByPath<TextMeshProUGUI>(_mapCanvas.transform, "Background/RunSummary");
+            _mapRoot = FindByPath<RectTransform>(_mapCanvas.transform, "Background/MapRoot");
+            _overlayRoot = FindByPath<RectTransform>(_mapCanvas.transform, "Background/OverlayRoot");
+            if (background == null || title == null || _runSummaryLabel == null || _mapRoot == null || _overlayRoot == null)
+            {
+                Destroy(instance);
+                _mapCanvas = null;
+                _runSummaryLabel = null;
+                _mapRoot = null;
+                _overlayRoot = null;
+                return false;
+            }
+
+            background.anchorMin = new Vector2(0.5f, 0.5f);
+            background.anchorMax = new Vector2(0.5f, 0.5f);
+            background.pivot = new Vector2(0.5f, 0.5f);
+            background.anchoredPosition = Vector2.zero;
+            background.sizeDelta = new Vector2(1920f, 1080f);
+            var bgImage = background.GetComponent<Image>();
+            if (bgImage != null)
+                bgImage.color = new Color(0.86f, 0.83f, 0.88f, 1f);
+
+            ConfigureTopLeftText(title.rectTransform, new Vector2(36f, -24f), new Vector2(560f, 50f), 34f, FontStyles.Bold);
+            title.text = "Hex Run Map";
+            ConfigureTopLeftText(_runSummaryLabel.rectTransform, new Vector2(36f, -78f), new Vector2(620f, 120f), 24f, FontStyles.Normal);
+
+            _mapRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            _mapRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            _mapRoot.pivot = new Vector2(0.5f, 0.5f);
+            _mapRoot.anchoredPosition = Vector2.zero;
+            _mapRoot.sizeDelta = new Vector2(1500f, 860f);
+            var mapImage = _mapRoot.GetComponent<Image>();
+            if (mapImage != null)
+                mapImage.color = new Color(1f, 1f, 1f, 0.02f);
+
+            _overlayRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            _overlayRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            _overlayRoot.pivot = new Vector2(0.5f, 0.5f);
+            _overlayRoot.anchoredPosition = Vector2.zero;
+            _overlayRoot.sizeDelta = new Vector2(1920f, 1080f);
+            var overlayImage = _overlayRoot.GetComponent<Image>();
+            if (overlayImage != null)
+                overlayImage.color = new Color(0f, 0f, 0f, 0f);
+            _overlayRoot.gameObject.SetActive(false);
+            return true;
+        }
+
+        private static void ConfigureTopLeftText(RectTransform rect, Vector2 anchoredPosition, Vector2 size, float fontSize, FontStyles fontStyle)
+        {
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            var text = rect.GetComponent<TextMeshProUGUI>();
+            if (text == null)
+                return;
+            HexTMPFontProvider.ApplyTo(text);
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            text.color = Color.white;
+            text.alignment = TextAlignmentOptions.TopLeft;
+        }
+
+        private static T FindByPath<T>(Transform root, string path) where T : Component
+        {
+            var node = root.Find(path);
+            return node != null ? node.GetComponent<T>() : null;
         }
 
         private void CompleteRoomAndReturnToMap()
@@ -1196,6 +1607,69 @@ namespace HexDemo
         {
 #if UNITY_EDITOR
             return AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(Starter02ControllerPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadProfessionSelectPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(ProfessionSelectPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureMapPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureMapPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureOverlayModalPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureOverlayModalPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureBottomButtonPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureBottomButtonPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureChoiceButtonPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureChoiceButtonPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureShopOfferCardPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureShopOfferCardPrefabPath);
+#else
+            return null;
+#endif
+        }
+
+        private static GameObject LoadAdventureRewardCardPrefab()
+        {
+#if UNITY_EDITOR
+            return AssetDatabase.LoadAssetAtPath<GameObject>(AdventureRewardCardPrefabPath);
 #else
             return null;
 #endif

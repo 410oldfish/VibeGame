@@ -4,6 +4,9 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace HexDemo
 {
@@ -91,6 +94,23 @@ namespace HexDemo
 
     public sealed class HexBattleUI : MonoBehaviour
     {
+        private const string BattleHudCanvasPrefabPath = "Assets/Prefabs/UI/Battle/BattleHudCanvas.prefab";
+        private const string BattlePanelDir = "Assets/Prefabs/UI/Battle/Panels/";
+        private const string CardViewItemPrefabPath = "Assets/Prefabs/UI/Battle/CardViewItem.prefab";
+
+        private static readonly string[] BattlePanelNames =
+        {
+            "HUD",
+            "ResourcePanel",
+            "HandPanel",
+            "ActionPanel",
+            "DrawPile",
+            "DiscardPile",
+            "PlayLog",
+            "PileModal",
+            "EnemyHandOverlay",
+            "PlayLogModal",
+        };
         private HexBattleController _controller;
         private readonly List<HexCardView> _cardViews = new();
         private RectTransform _handRoot;
@@ -98,11 +118,7 @@ namespace HexDemo
         private TextMeshProUGUI _statusLabel;
         private TextMeshProUGUI _deckLabel;
         private TextMeshProUGUI _resourceLabel;
-        private TextMeshProUGUI _weaponLabel;
         private Button _endTurnButton;
-        private Button _swordSkillButton;
-        private Button _axeSkillButton;
-        private Button _hammerSkillButton;
         private Button _drawPileButton;
         private Button _discardPileButton;
         private Button _playLogButton;
@@ -146,11 +162,7 @@ namespace HexDemo
             _statusLabel.text = _controller.GetStatusSummary();
             _deckLabel.text = _controller.GetDeckSummary();
             _resourceLabel.text = _controller.GetResourceSummary();
-            _weaponLabel.text = _controller.GetWeaponSkillSummary();
             _endTurnButton.interactable = _controller.CanLocalPlayerEndTurn();
-            _swordSkillButton.interactable = _controller.CanUseWeaponSkill(HexWeaponType.Sword);
-            _axeSkillButton.interactable = _controller.CanUseWeaponSkill(HexWeaponType.Axe);
-            _hammerSkillButton.interactable = _controller.CanUseWeaponSkill(HexWeaponType.Hammer);
             _drawPileLabel.text = $"Draw\n{_controller.GetLocalDrawPile().Count}";
             _discardPileLabel.text = $"Discard\n{_controller.GetLocalDiscardPile().Count}";
             RebuildHand();
@@ -166,11 +178,8 @@ namespace HexDemo
             var hand = _controller.GetLocalHand();
             for (int i = 0; i < hand.Count; i++)
             {
-                var cardGO = new GameObject($"Card_{i}", typeof(RectTransform), typeof(Image), typeof(CanvasGroup), typeof(HexCardView));
+                var cardGO = CreateCardRoot($"Card_{i}");
                 cardGO.transform.SetParent(_handRoot, false);
-
-                var rect = cardGO.GetComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(CardWidth, CardHeight);
 
                 var image = cardGO.GetComponent<Image>();
                 image.color = Color.Lerp(hand[i].definition.color, Color.black, 0.12f);
@@ -184,8 +193,36 @@ namespace HexDemo
             }
         }
 
+        private GameObject CreateCardRoot(string name)
+        {
+#if UNITY_EDITOR
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CardViewItemPrefabPath);
+            if (prefab != null)
+            {
+                var card = Instantiate(prefab);
+                card.name = name;
+                if (card.GetComponent<RectTransform>() == null)
+                    card.AddComponent<RectTransform>();
+                if (card.GetComponent<Image>() == null)
+                    card.AddComponent<Image>();
+                if (card.GetComponent<CanvasGroup>() == null)
+                    card.AddComponent<CanvasGroup>();
+                if (card.GetComponent<HexCardView>() == null)
+                    card.AddComponent<HexCardView>();
+                card.GetComponent<RectTransform>().sizeDelta = new Vector2(CardWidth, CardHeight);
+                return card;
+            }
+#endif
+            var cardGO = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(CanvasGroup), typeof(HexCardView));
+            cardGO.GetComponent<RectTransform>().sizeDelta = new Vector2(CardWidth, CardHeight);
+            return cardGO;
+        }
+
         private void BuildCanvas()
         {
+            if (TryBuildCanvasFromPrefab())
+                return;
+
             var canvasGO = new GameObject("BattleHUD_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasGO.transform.SetParent(transform, false);
             _canvas = canvasGO.GetComponent<Canvas>();
@@ -204,12 +241,6 @@ namespace HexDemo
 
             var resourcePanel = CreatePanel(canvasGO.transform, "ResourcePanel", new Vector2(20f, 20f), new Vector2(240f, 92f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
             _resourceLabel = CreateTMP(resourcePanel.transform, "Resource", new Vector2(16f, -16f), new Vector2(208f, 58f), 26, FontStyles.Bold);
-
-            var weaponPanel = CreatePanel(canvasGO.transform, "WeaponPanel", new Vector2(276f, 20f), new Vector2(420f, 120f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-            _weaponLabel = CreateTMP(weaponPanel.transform, "WeaponSummary", new Vector2(16f, -14f), new Vector2(180f, 80f), 22, FontStyles.Bold);
-            _swordSkillButton = CreateSmallButton(weaponPanel.transform, "Sword", new Vector2(210f, -14f), () => _controller.RequestWeaponSkill(HexWeaponType.Sword));
-            _axeSkillButton = CreateSmallButton(weaponPanel.transform, "Axe", new Vector2(210f, -50f), () => _controller.RequestWeaponSkill(HexWeaponType.Axe));
-            _hammerSkillButton = CreateSmallButton(weaponPanel.transform, "Hammer", new Vector2(210f, -86f), () => _controller.RequestWeaponSkill(HexWeaponType.Hammer));
 
             var handPanel = CreatePanel(canvasGO.transform, "HandPanel", new Vector2(0f, 0f), new Vector2(1180f, 292f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
             handPanel.GetComponent<Image>().color = new Color(0.08f, 0.1f, 0.14f, 0.85f);
@@ -258,6 +289,150 @@ namespace HexDemo
             BuildPileModal(canvasGO.transform);
             BuildEnemyHandPopup(canvasGO.transform);
             BuildPlayLogModal(canvasGO.transform);
+        }
+
+        private bool TryBuildCanvasFromPrefab()
+        {
+#if UNITY_EDITOR
+            var canvasPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(BattleHudCanvasPrefabPath);
+            if (canvasPrefab == null)
+                return false;
+
+            var canvasGO = Instantiate(canvasPrefab, transform, false);
+            canvasGO.name = "BattleHUD_Canvas";
+            _canvas = canvasGO.GetComponent<Canvas>();
+            if (_canvas == null)
+            {
+                Destroy(canvasGO);
+                _canvas = null;
+                return false;
+            }
+
+            for (int i = 0; i < BattlePanelNames.Length; i++)
+            {
+                if (InstantiateBattlePanel(BattlePanelNames[i], canvasGO.transform) == null)
+                {
+                    Destroy(canvasGO);
+                    _canvas = null;
+                    return false;
+                }
+            }
+
+            _turnLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "HUD/Turn");
+            _statusLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "HUD/Status");
+            _deckLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "HUD/Deck");
+            _resourceLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "ResourcePanel/Resource");
+            _endTurnButton = FindByPath<Button>(canvasGO.transform, "ActionPanel");
+            _drawPileButton = FindByPath<Button>(canvasGO.transform, "DrawPile");
+            _discardPileButton = FindByPath<Button>(canvasGO.transform, "DiscardPile");
+            _playLogButton = FindByPath<Button>(canvasGO.transform, "PlayLog");
+            _drawPileLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "DrawPile/DrawLabel");
+            _discardPileLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "DiscardPile/DiscardLabel");
+            _handRoot = FindByPath<RectTransform>(canvasGO.transform, "HandPanel/HandRoot");
+
+            _pileModal = FindByPath<RectTransform>(canvasGO.transform, "PileModal");
+            _pileModalTitle = FindByPath<TextMeshProUGUI>(canvasGO.transform, "PileModal/Title");
+            _pileModalContent = FindByPath<RectTransform>(canvasGO.transform, "PileModal/ScrollRoot/Viewport/Content");
+            _enemyHandOverlay = FindByPath<RectTransform>(canvasGO.transform, "EnemyHandOverlay");
+            _enemyHandPopup = FindByPath<RectTransform>(canvasGO.transform, "EnemyHandOverlay/EnemyHandPopup");
+            _enemyHandTitle = FindByPath<TextMeshProUGUI>(canvasGO.transform, "EnemyHandOverlay/EnemyHandPopup/Title");
+            _enemyHandContent = FindByPath<RectTransform>(canvasGO.transform, "EnemyHandOverlay/EnemyHandPopup/Content");
+            _playLogModal = FindByPath<RectTransform>(canvasGO.transform, "PlayLogModal");
+            _playLogContent = FindByPath<RectTransform>(canvasGO.transform, "PlayLogModal/ScrollRoot/Viewport/Content");
+
+            if (!ValidateCoreReferences())
+            {
+                Destroy(canvasGO);
+                _canvas = null;
+                return false;
+            }
+
+            WireButtonActions();
+            return true;
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_EDITOR
+        private GameObject InstantiateBattlePanel(string panelName, Transform parent)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BattlePanelDir + panelName + ".prefab");
+            if (prefab == null)
+                return null;
+
+            var go = Instantiate(prefab, parent, false);
+            go.name = panelName;
+            return go;
+        }
+#endif
+
+        private static T FindByPath<T>(Transform root, string path) where T : Component
+        {
+            var t = root.Find(path);
+            return t != null ? t.GetComponent<T>() : null;
+        }
+
+        private bool ValidateCoreReferences()
+        {
+            return _turnLabel != null &&
+                   _statusLabel != null &&
+                   _deckLabel != null &&
+                   _resourceLabel != null &&
+                   _endTurnButton != null &&
+                   _drawPileButton != null &&
+                   _discardPileButton != null &&
+                   _playLogButton != null &&
+                   _drawPileLabel != null &&
+                   _discardPileLabel != null &&
+                   _handRoot != null &&
+                   _pileModal != null &&
+                   _pileModalTitle != null &&
+                   _pileModalContent != null &&
+                   _enemyHandOverlay != null &&
+                   _enemyHandPopup != null &&
+                   _enemyHandTitle != null &&
+                   _enemyHandContent != null &&
+                   _playLogModal != null &&
+                   _playLogContent != null;
+        }
+
+        private void WireButtonActions()
+        {
+            _endTurnButton.onClick.RemoveAllListeners();
+            _endTurnButton.onClick.AddListener(_controller.RequestEndTurn);
+
+            _drawPileButton.onClick.RemoveAllListeners();
+            _drawPileButton.onClick.AddListener(() => OpenPileView("Draw Pile", _controller.GetLocalDrawPile()));
+            _discardPileButton.onClick.RemoveAllListeners();
+            _discardPileButton.onClick.AddListener(() => OpenPileView("Discard Pile", _controller.GetLocalDiscardPile()));
+            _playLogButton.onClick.RemoveAllListeners();
+            _playLogButton.onClick.AddListener(OpenPlayLogView);
+
+            var enemyOverlayButton = _enemyHandOverlay.GetComponent<Button>();
+            if (enemyOverlayButton != null)
+            {
+                enemyOverlayButton.onClick.RemoveAllListeners();
+                enemyOverlayButton.onClick.AddListener(CloseEnemyHandPopup);
+            }
+            _enemyHandOverlay.gameObject.SetActive(false);
+
+            var pileClose = FindByPath<Button>(_pileModal, "CloseButton");
+            if (pileClose != null)
+            {
+                pileClose.onClick.RemoveAllListeners();
+                pileClose.onClick.AddListener(() => _pileModal.gameObject.SetActive(false));
+            }
+
+            var playLogClose = FindByPath<Button>(_playLogModal, "CloseButton");
+            if (playLogClose != null)
+            {
+                playLogClose.onClick.RemoveAllListeners();
+                playLogClose.onClick.AddListener(() => _playLogModal.gameObject.SetActive(false));
+            }
+
+            _pileModal.gameObject.SetActive(false);
+            _playLogModal.gameObject.SetActive(false);
         }
 
         private static void CreateCardFace(Transform parent, HexCardInstance card, int displayedCost)
@@ -328,17 +503,6 @@ namespace HexDemo
             return text;
         }
 
-        private Button CreateSmallButton(Transform parent, string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction onClick)
-        {
-            var panel = CreatePanel(parent, $"{label}_Skill", anchoredPosition, new Vector2(190f, 30f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
-            var button = panel.gameObject.AddComponent<Button>();
-            button.onClick.AddListener(onClick);
-            var text = CreateTMP(panel.transform, "Label", new Vector2(0f, 0f), new Vector2(190f, 30f), 18f, FontStyles.Bold);
-            text.alignment = TextAlignmentOptions.Center;
-            text.text = label;
-            return button;
-        }
-
         private static void EnsureEventSystem()
         {
             if (Object.FindFirstObjectByType<EventSystem>() != null)
@@ -353,6 +517,11 @@ namespace HexDemo
             return (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf) ||
                    (_pileModal != null && _pileModal.gameObject.activeSelf) ||
                    (_playLogModal != null && _playLogModal.gameObject.activeSelf);
+        }
+
+        public bool IsEnemyIntentPopupOpen()
+        {
+            return _enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf;
         }
 
         public void OpenEnemyHandPopup(HexBattleUnit enemy, Vector2 screenPosition)

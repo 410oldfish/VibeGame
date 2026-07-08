@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: warrior_cleave
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: warrior_cleave
+  displayName: "\u987A\u5288"
+  cardType: 0
+  profession: 1
+  effectType: 8
+  targetType: 0
+  energyCost: 1
+  amount: 4
+  range: 1
+  castRange: 1
+  effectRadius: 0
+  priority: 1
+  rarity: Common
+  description: "\u5BF9\u6700\u591A2\u4E2A\u90BB\u683C\u654C\u4EBA\u54044\u4F24\u3002"
+  color: {r: 0.78, g: 0.28, b: 0.22, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u8FC7\u6E21"

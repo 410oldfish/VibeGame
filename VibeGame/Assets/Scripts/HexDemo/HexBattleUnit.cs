@@ -196,6 +196,16 @@ namespace HexDemo
             State.warriorGainStrengthOnFearPlayed = false;
             State.warriorArmorOnFearAdded = false;
             State.warriorHealOnBleedGain = false;
+            State.warriorWindstepReady = false;
+            State.warriorFirstAttackKnockback = false;
+            State.warriorOpeningReach = false;
+            State.warriorLightGear = false;
+            State.warriorFearEcho = false;
+            State.warriorWindstepUsedThisTurn = false;
+            State.warriorFirstAttackCardUsedThisTurn = false;
+            State.warriorLightGearUsedThisTurn = false;
+            State.warriorFearEchoUsedThisTurn = false;
+            State.blastBarrelDamage = 0;
             State.axeAppliesArmorBreak = false;
             State.hammerDoubleArmorDamage = false;
             State.swordAppliesBrittle = false;
@@ -295,6 +305,10 @@ namespace HexDemo
             State.warriorMoveFinisherUsedThisTurn = false;
             State.warriorBleedEventsThisTurn = 0;
             State.warriorExtraFearUsedThisTurn = false;
+            State.warriorWindstepUsedThisTurn = false;
+            State.warriorFirstAttackCardUsedThisTurn = false;
+            State.warriorLightGearUsedThisTurn = false;
+            State.warriorFearEchoUsedThisTurn = false;
             State.warriorDamageMultiplierThisTurn = 0;
             State.paralysisActiveThisTurn = State.paralysis;
             State.paralysis = 0;
@@ -816,18 +830,6 @@ namespace HexDemo
                 candidates[index].costsNoEnergyThisTurn = true;
                 candidates.RemoveAt(index);
             }
-        }
-
-        public bool CanUseWeaponSkill(int energyCost)
-        {
-            return IsAlive && CanActThisTurn && State.energy >= energyCost && State.skillCooldown <= 0;
-        }
-
-        public void SpendWeaponSkill(int energyCost, int cooldown, HexWeaponType weaponType)
-        {
-            SpendEnergy(energyCost);
-            State.skillCooldown = Mathf.Max(0, cooldown);
-            State.weapon = weaponType;
         }
 
         public void QueueNextAttackDraw(int amount)

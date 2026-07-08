@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: warrior_brutality
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: warrior_brutality
+  displayName: "\u86EE\u529B"
+  cardType: 1
+  profession: 1
+  effectType: 8
+  targetType: 0
+  energyCost: 1
+  amount: 6
+  range: 0
+  castRange: 0
+  effectRadius: 0
+  priority: 2
+  rarity: Rare
+  description: "6\u683C\u6321+\u81EA\u8EAB\u6D41\u88401\uFF1B\u672C\u573A\u6D41\u8840\u4E8B\u4EF6\u7D2F\u8BA17\u6B21\u540E\u83B7\u5F971\u5C42\u5438\u8840\u3002"
+  color: {r: 0.64, g: 0.18, b: 0.18, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u6D41\u8840"
+  - "\u6536\u675F"

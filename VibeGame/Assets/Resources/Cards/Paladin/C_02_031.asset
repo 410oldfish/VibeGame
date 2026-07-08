@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: C_02_031
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: C_02_031
+  displayName: "\u7206\u71C3"
+  cardType: 1
+  profession: 4
+  effectType: 1
+  targetType: 0
+  energyCost: 3
+  amount: 0
+  range: 0
+  castRange: 0
+  effectRadius: 0
+  priority: 2
+  rarity: Rare
+  description: "\u5982\u679C\u76EE\u6807\u6709\u71C3\u70E7\uFF0C\u5C06\u76EE\u6807\u7684\u4E00\u534A\u71C3\u70E7\u5C42\u6570\u4F20\u64AD\u7ED9\u5176\u4ED6\u6240\u6709\u654C\u4EBA\u3002\n\u5426\u5219\u7ED9\u4E8830\u5C42\u71C3\u70E7\u3002\n\u6D88\u8017\u3002"
+  color: {r: 0.27, g: 0.52, b: 0.82, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags: []

@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: warrior_blazing_step
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: warrior_blazing_step
+  displayName: "\u70BD\u71C3\u6B65\u4F10"
+  cardType: 5
+  profession: 1
+  effectType: 3
+  targetType: 3
+  energyCost: 1
+  amount: 1
+  range: 1
+  castRange: 1
+  effectRadius: 0
+  priority: 0
+  rarity: Uncommon
+  description: "\u79FB\u52A81\uFF1B\u843D\u70B9\u90BB\u683C\u654C\u4EBA+2\u71C3\u70E7\u3002"
+  color: {r: 0.82, g: 0.36, b: 0.18, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u71C3\u70E7"
+  - "\u4E8B\u4EF6"

@@ -378,6 +378,14 @@ namespace HexDemo
             _hand.Add(new HexCardInstance(definition));
         }
 
+        public void AddToExhaustPile(HexCardDefinition definition)
+        {
+            if (definition == null)
+                return;
+
+            _exhaustPile.Add(new HexCardInstance(definition));
+        }
+
         public void ClearBattleState()
         {
             _drawPile.Clear();
@@ -515,6 +523,16 @@ namespace HexDemo
         public bool warriorGainStrengthOnFearPlayed;
         public bool warriorArmorOnFearAdded;
         public bool warriorHealOnBleedGain;
+        public bool warriorWindstepReady;
+        public bool warriorFirstAttackKnockback;
+        public bool warriorOpeningReach;
+        public bool warriorLightGear;
+        public bool warriorFearEcho;
+        public bool warriorWindstepUsedThisTurn;
+        public bool warriorFirstAttackCardUsedThisTurn;
+        public bool warriorLightGearUsedThisTurn;
+        public bool warriorFearEchoUsedThisTurn;
+        public int blastBarrelDamage;
         public bool axeAppliesArmorBreak;
         public bool hammerDoubleArmorDamage;
         public bool swordAppliesBrittle;
@@ -588,9 +606,10 @@ namespace HexDemo
 
     public static class HexCardLibrary
     {
-        private const string WarriorExportPath = "F:/VibeGame/CardCreator/exports/warrior_cards.json";
-        private const string PaladinExportPath = "F:/VibeGame/CardCreator/exports/paladin_cards.json";
-        private const string DruidExportPath = "F:/VibeGame/CardCreator/exports/Druid_cards.json";
+        private static string ExportDir => Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "CardCreator", "exports"));
+        private static string WarriorExportPath => Path.Combine(ExportDir, "warrior_cards.json");
+        private static string PaladinExportPath => Path.Combine(ExportDir, "paladin_cards.json");
+        private static string DruidExportPath => Path.Combine(ExportDir, "Druid_cards.json");
         private static readonly Regex KnockbackRegex = new(@"\u51fb\u98de\s*(\d+)", RegexOptions.Compiled);
         private static readonly Regex PullRegex = new(@"\u62c9\u8fd1\s*(\d+)", RegexOptions.Compiled);
         private static readonly Regex BleedRegex = new(@"\u6d41\u8840\s*(\d+)", RegexOptions.Compiled);
@@ -924,6 +943,25 @@ namespace HexDemo
         private static List<HexCardDefinition> s_loadedWarriorPool;
         private static List<HexCardDefinition> s_loadedPaladinPool;
         private static List<HexCardDefinition> s_loadedDruidPool;
+        private static List<HexCardDefinition> s_loadedCommonPool;
+
+        private const string CardDatabaseResourcePath = "HexCardDatabase";
+        private static HexCardDatabaseSO s_database;
+        private static bool s_databaseChecked;
+
+        private static HexCardDatabaseSO Database
+        {
+            get
+            {
+                if (!s_databaseChecked)
+                {
+                    s_databaseChecked = true;
+                    s_database = Resources.Load<HexCardDatabaseSO>(CardDatabaseResourcePath);
+                }
+
+                return s_database;
+            }
+        }
 
         public static HexCardDefinition GetAttack() => Attack;
         public static HexCardDefinition GetDefend() => Defend;
@@ -933,12 +971,31 @@ namespace HexDemo
         public static HexCardDefinition GetTemporaryThrowingAxe() => TemporaryThrowingAxe;
         public static HexCardDefinition GetGoblinStrike() => GoblinStrike;
         public static HexCardDefinition GetGoblinApproach() => GoblinApproach;
-        public static IReadOnlyList<HexCardDefinition> GetRewardPool() => RewardPool;
-        public static IReadOnlyList<HexCardDefinition> GetCommonPool() => CommonPool;
+        public static IReadOnlyList<HexCardDefinition> GetEnemyCards() => EnemyCards;
+        public static IReadOnlyList<HexCardDefinition> GetWarriorDesignCardsRaw() => WarriorDesignCards;
+        public static IReadOnlyList<HexCardDefinition> GetRewardPool() => GetWarriorPool();
+        public static IReadOnlyList<HexCardDefinition> GetCommonPool()
+        {
+            if (s_loadedCommonPool == null)
+            {
+                var fromDb = Database != null ? Database.BuildCommon() : null;
+                s_loadedCommonPool = fromDb != null && fromDb.Count > 0
+                    ? fromDb
+                    : new List<HexCardDefinition>(CommonPool);
+            }
+
+            return s_loadedCommonPool;
+        }
+
         public static IReadOnlyList<HexCardDefinition> GetWarriorPool()
         {
             if (s_loadedWarriorPool == null)
-                s_loadedWarriorPool = new List<HexCardDefinition>(WarriorDesignCards);
+            {
+                var fromDb = Database != null ? Database.BuildWarrior() : null;
+                s_loadedWarriorPool = fromDb != null && fromDb.Count > 0
+                    ? fromDb
+                    : new List<HexCardDefinition>(WarriorDesignCards);
+            }
 
             return s_loadedWarriorPool;
         }
@@ -946,7 +1003,12 @@ namespace HexDemo
         public static IReadOnlyList<HexCardDefinition> GetDruidPool()
         {
             if (s_loadedDruidPool == null)
-                s_loadedDruidPool = LoadProfessionPoolFromExport(DruidExportPath, HexCardProfession.Druid, new List<HexCardDefinition>());
+            {
+                var fromDb = Database != null ? Database.BuildDruid() : null;
+                s_loadedDruidPool = fromDb != null && fromDb.Count > 0
+                    ? fromDb
+                    : LoadProfessionPoolFromExport(DruidExportPath, HexCardProfession.Druid, new List<HexCardDefinition>());
+            }
 
             return s_loadedDruidPool;
         }
@@ -954,7 +1016,12 @@ namespace HexDemo
         public static IReadOnlyList<HexCardDefinition> GetPaladinPool()
         {
             if (s_loadedPaladinPool == null)
-                s_loadedPaladinPool = LoadProfessionPoolFromExport(PaladinExportPath, HexCardProfession.Paladin, new List<HexCardDefinition> { Attack, Defend });
+            {
+                var fromDb = Database != null ? Database.BuildPaladin() : null;
+                s_loadedPaladinPool = fromDb != null && fromDb.Count > 0
+                    ? fromDb
+                    : LoadProfessionPoolFromExport(PaladinExportPath, HexCardProfession.Paladin, new List<HexCardDefinition> { Attack, Defend });
+            }
 
             return s_loadedPaladinPool;
         }
@@ -1339,6 +1406,28 @@ namespace HexDemo
                 W("warrior_break_platform", "破台", HexCardType.Action, HexCardEffectType.DestroyHighGround, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "移动1；破坏邻格高台。", actionColor, "位移", "Post-MVP", "事件"),
                 W("warrior_charge", "猛冲", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 4, 1, 0, "Rare", "直线推进1；碰撞+4；本链已触发位移时撞高台追加8。", actionColor, "位移", "Post-MVP", "收束"),
                 W("warrior_quake", "震地", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Tile, 2, 4, 1, 1, "Rare", "移动1；邻格全体4伤；本回合已触发位移时+2伤/目标；随机1邻格高台变废墟木箱。", actionColor, "位移", "Post-MVP", "收束"),
+
+                W("warrior_close_step", "贴身步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 3, 0, "Starter", "移动1，或移动到敌人的任意邻格。", actionColor, "位置控制", "草案"),
+                W("warrior_windstep_ready", "踏风预备", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "位移时，本回合获得2临时力量。", skillColor, "过渡", "特殊协同", "草案"),
+                W("warrior_opening_stagger", "起手震慑", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击牌获得击退1。", powerColor, "过渡", "规则常驻", "草案"),
+                W("warrior_opening_reach", "先手延展", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击牌攻击距离+1。", powerColor, "过渡", "规则常驻", "草案"),
+                W("warrior_leap_step", "跃迁步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "可跨越1个敌人或残骸后落地，移动2。", actionColor, "过渡", "纯粹移动", "草案"),
+                W("warrior_blast_barrel", "爆破桶", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 8, 1, 0, "Uncommon", "给敌方单位放置炸药桶状态（受击时对周围造成8范围伤）。", skillColor, "过渡", "地形互动", "草案"),
+                W("warrior_hook", "钩锁", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 4, 2, 0, "Common", "4伤；将目标拉拽1至邻格。", attackColor, "过渡", "敌人位置控制", "草案"),
+                W("warrior_break_slash", "破障斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 8, 1, 0, "Uncommon", "8伤；破坏邻格残骸。", attackColor, "过渡", "地形互动", "草案"),
+                W("warrior_light_gear", "轻装", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合首次移动不消耗额外费用。", powerColor, "过渡", "规则常驻", "草案"),
+                W("warrior_fortify", "筑垒", HexCardType.Action, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 1, 0, "Uncommon", "邻格空位生成临时障碍，持续1回合。", actionColor, "过渡", "地形互动", "草案"),
+                W("warrior_block_path", "封路", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Direction, 2, 1, 1, 0, "Rare", "指定直线1生成障碍。", skillColor, "过渡", "地形互动", "草案"),
+                W("warrior_rolling_siege", "滚石攻城", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Direction, 2, 4, 1, 0, "Rare", "破坏邻格残骸，直线推进滚石：沿途每格4伤。", attackColor, "过渡", "地形互动", "消耗", "草案"),
+                W("warrior_pierce_step", "穿垒步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "穿越一个残骸，移动到残骸对侧。", actionColor, "过渡", "地形互动", "草案"),
+                W("warrior_backwall_smash", "背障重击", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 34, 1, 0, "Rare", "身后是障碍时造成34伤，否则10伤。", attackColor, "过渡", "短期爆发", "消耗", "草案"),
+                W("warrior_dismantle_slash", "拆垒重斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 14, 1, 0, "Uncommon", "目标附近有残骸时造成14伤并破坏残骸，否则6伤。", attackColor, "过渡", "地形互动", "草案"),
+                W("warrior_clear_path", "开路", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Common", "移除邻格障碍/残骸；移动1。", actionColor, "过渡", "地形互动", "草案"),
+
+                W("warrior_intent_intercept", "意图截流", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 2, 0, "Rare", "消耗敌人意图队列1张卡牌（进入你的消耗堆）；敌方抽牌堆+2消耗牌。", fearColor, "塞牌", "消耗", "草案"),
+                W("warrior_fear_press", "惧压斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 9, 1, 0, "Common", "消耗敌方意图槽1张恐惧标签牌；9伤。", fearColor, "塞牌", "收束"),
+                W("warrior_evasion_plan", "规避预案", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 2, 0, "Common", "移动1；4格挡；意图槽有恐惧标签时再移动1。", fearColor, "塞牌", "纯粹移动"),
+                W("warrior_fear_echo", "余惧回响", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每当敌方移除或弃置恐惧标签牌时，你抽1（每回合最多1次）。", powerColor, "塞牌", "规则常驻"),
             };
         }
 

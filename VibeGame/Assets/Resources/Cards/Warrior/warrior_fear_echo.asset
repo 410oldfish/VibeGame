@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: warrior_fear_echo
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: warrior_fear_echo
+  displayName: "\u4F59\u60E7\u56DE\u54CD"
+  cardType: 2
+  profession: 1
+  effectType: 8
+  targetType: 0
+  energyCost: 1
+  amount: 1
+  range: 0
+  castRange: 0
+  effectRadius: 0
+  priority: 2
+  rarity: Uncommon
+  description: "\u6BCF\u5F53\u654C\u65B9\u79FB\u9664\u6216\u5F03\u7F6E\u6050\u60E7\u6807\u7B7E\u724C\u65F6\uFF0C\u4F60\u62BD1\uFF08\u6BCF\u56DE\u5408\u6700\u591A1\u6B21\uFF09\u3002"
+  color: {r: 0.55, g: 0.34, b: 0.78, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u585E\u724C"
+  - "\u89C4\u5219\u5E38\u9A7B"
