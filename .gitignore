@@ -24,6 +24,4 @@ VibeGame/YooAsset.Editor.csproj
 VibeGame/YooAsset.EditorExtension.csproj
 VibeGame/YooAsset.MiniGame.csproj
 VibeGame/YooAsset.RuntimeExtension.csproj
-VibeGame/Packages/manifest.json
-VibeGame/Packages/packages-lock.json
 VibeGame/UserSettings/Layouts/default-6000.dwlt
