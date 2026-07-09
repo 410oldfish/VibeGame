@@ -142,9 +142,9 @@ namespace HexDemo
             if (grid == null || rayCamera == null)
                 return;
 
-            if (Input.GetMouseButtonDown(1) && _ui != null && _ui.IsEnemyIntentPopupOpen())
+            if (Input.GetMouseButtonDown(1) && _ui != null && _ui.IsBlockingWorldClick())
             {
-                _ui.CloseEnemyHandPopup();
+                _ui.CloseTopModal();
                 return;
             }
 
@@ -172,6 +172,11 @@ namespace HexDemo
             return _playerUnit != null ? _playerUnit.Deck.DiscardPile : System.Array.Empty<HexCardInstance>();
         }
 
+        public IReadOnlyList<HexCardInstance> GetLocalExhaustPile()
+        {
+            return _playerUnit != null ? _playerUnit.Deck.ExhaustPile : System.Array.Empty<HexCardInstance>();
+        }
+
         public IReadOnlyList<HexCardPlayLogEntry> GetPlayLog()
         {
             return _playLog;
@@ -195,7 +200,93 @@ namespace HexDemo
 
         public string GetTurnSummary()
         {
-            return _currentTurn == HexBattleFaction.Player ? "Player Turn" : "Enemy Turn";
+            return _currentTurn == HexBattleFaction.Player ? "玩家回合" : "敌方回合";
+        }
+
+        public BattleHudSnapshot GetBattleHudSnapshot()
+        {
+            var snapshot = new BattleHudSnapshot
+            {
+                phaseLabel = GetTurnSummary(),
+                canEndTurn = CanLocalPlayerEndTurn(),
+            };
+
+            if (_playerUnit?.State != null)
+            {
+                snapshot.player.displayName = "战士";
+                snapshot.player.currentHealth = _playerUnit.State.currentHealth;
+                snapshot.player.maxHealth = _playerUnit.State.maxHealth;
+                snapshot.player.armor = _playerUnit.State.armor;
+                snapshot.player.energy = _playerUnit.State.energy;
+                snapshot.player.maxEnergy = _playerUnit.State.maxEnergy;
+                snapshot.player.power = _playerUnit.State.strength;
+                snapshot.player.statuses = HexBattleStatusDisplay.BuildMvpStatusEntries(_playerUnit.State);
+
+                snapshot.piles.draw = _playerUnit.Deck.DrawPile.Count;
+                snapshot.piles.hand = _playerUnit.Deck.Hand.Count;
+                snapshot.piles.discard = _playerUnit.Deck.DiscardPile.Count;
+                snapshot.piles.exhaust = _playerUnit.Deck.ExhaustPile.Count;
+            }
+
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                var enemy = _enemyUnits[i];
+                if (enemy == null || !enemy.IsAlive)
+                    continue;
+
+                var enemyView = new BattleUnitHudView
+                {
+                    enemyIndex = i,
+                    displayName = enemy.State?.displayName ?? $"敌人 {i + 1}",
+                    currentHealth = enemy.State.currentHealth,
+                    maxHealth = enemy.State.maxHealth,
+                    armor = enemy.State.armor,
+                    statuses = HexBattleStatusDisplay.BuildMvpStatusEntries(enemy.State),
+                    intentOrderHint = BuildIntentOrderHint(enemy),
+                };
+
+                if (_enemyIntentSlots.TryGetValue(enemy, out var slots) && slots != null)
+                {
+                    var ordered = GetEnemyIntentExecutionOrder(enemy);
+                    for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+                    {
+                        var slot = slots[slotIndex];
+                        bool isEmpty = slot?.card == null || slot.card.definition == null;
+                        int order = ordered.FindIndex(s => ReferenceEquals(s, slot));
+                        enemyView.intentSlots.Add(new BattleIntentSlotView
+                        {
+                            slotKind = slot.slotKind,
+                            slotLabel = HexBattleStatusDisplay.GetIntentSlotLabel(slot.slotKind),
+                            cardName = isEmpty ? string.Empty : slot.card.definition.displayName,
+                            cardCost = isEmpty ? 0 : Mathf.Max(0, slot.card.definition.energyCost),
+                            isEmpty = isEmpty,
+                            executionOrder = order >= 0 ? order + 1 : slotIndex + 1,
+                        });
+                    }
+                }
+
+                snapshot.enemies.Add(enemyView);
+            }
+
+            return snapshot;
+        }
+
+        private string BuildIntentOrderHint(HexBattleUnit enemy)
+        {
+            if (enemy?.State == null)
+                return string.Empty;
+
+            var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            if (definition == null || !_enemyIntentSlots.TryGetValue(enemy, out var slots) || slots == null || slots.Count == 0)
+                return string.Empty;
+
+            var target = GetPrimaryEnemyTarget(enemy);
+            bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
+            bool attackFirst = targetInRange;
+            if (definition.intentPattern == HexEnemyIntentPattern.Ranged && !targetInRange)
+                attackFirst = false;
+
+            return attackFirst ? "若保持当前距离：先攻后移" : "若保持当前距离：先移后攻";
         }
 
         public string GetStatusSummary()
@@ -220,12 +311,19 @@ namespace HexDemo
 
         public string GetDeckSummary()
         {
-            return $"Draw {_playerUnit.Deck.DrawPile.Count}   Hand {_playerUnit.Deck.Hand.Count}   Discard {_playerUnit.Deck.DiscardPile.Count}   Exhaust {_playerUnit.Deck.ExhaustPile.Count}";
+            if (_playerUnit == null)
+                return string.Empty;
+
+            var piles = GetBattleHudSnapshot().piles;
+            return $"抽牌 {piles.draw}  手牌 {piles.hand}  弃牌 {piles.discard}  消耗 {piles.exhaust}";
         }
 
         public string GetResourceSummary()
         {
-            return $"Energy  {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}\nMove    Cards only\nPower   {_playerUnit.State.strength}";
+            if (_playerUnit?.State == null)
+                return string.Empty;
+
+            return $"能量 {_playerUnit.State.energy}/{_playerUnit.State.maxEnergy}\n力量 {_playerUnit.State.strength}";
         }
 
         public bool CanLocalPlayerEndTurn()
@@ -356,7 +454,7 @@ namespace HexDemo
         {
             if (_draggedCard == null || _draggedCard.definition == null || _draggedCard.definition.isUnplayable || !_playerUnit.CanPay(_draggedCard) || _busy)
                 return false;
-            if (HasCardTag(_draggedCard.definition, "首发") && _playerUnit.State.cardsPlayedThisTurn > 0)
+            if (!KeywordTriggerEngine.CanPlay(_playerUnit, _draggedCard))
                 return false;
 
             if (_draggedCard.definition.id == "C_01_030" && !CanClashSucceed(_playerUnit))
@@ -480,10 +578,13 @@ namespace HexDemo
             int energyCost = source.GetCardEnergyCost(card);
             HexAxialCoord targetedCoord = directionalCoord ?? (target != null ? target.State.coord : source.State.coord);
             source.SpendEnergy(energyCost);
-            bool exhaustCard = card.exhaustWhenPlayed || HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Exhaust);
+            bool exhaustCard = KeywordTriggerEngine.ShouldExhaustOnPlay(source, card);
             source.Deck.DiscardFromHand(card, exhaustCard);
+            card.ResetActionFlags();
             RecordCardPlay(source, target, card, targetedCoord);
             source.NotifyCardPlayed();
+            if (source == _playerUnit)
+                ExhaustHandCardsTriggeredByPlay(source, card);
             _ui?.ShowPlayedCard(source, card);
             if (source.State.bleed > 0)
             {
@@ -1534,11 +1635,11 @@ namespace HexDemo
                 case "warrior_dash_strike":
                     yield return MoveTowardTargetRoutine(source, target, 1);
                     yield return ResolveDirectAttackRoutine(source, target, 6);
-                    RefundEnergyOnHit(source, target, energySpent);
+                    RefundEnergyOnHit(source, target, card, energySpent);
                     yield break;
                 case "warrior_pursuit":
                     yield return ResolveDirectAttackRoutine(source, target, 5);
-                    RefundEnergyOnHit(source, target, energySpent);
+                    RefundEnergyOnHit(source, target, card, energySpent);
                     yield return ResolveRetreatRoutine(source, target, 1);
                     yield break;
                 case "warrior_battle_cry_transition":
@@ -1631,7 +1732,7 @@ namespace HexDemo
                     yield return ResolveDirectAttackRoutine(source, target, 8);
                     ApplyWarriorBurn(source, target, 2);
                     if (target != null && target.State.burn > 0)
-                        RefundEnergyOnHit(source, target, energySpent);
+                        RefundEnergyOnHit(source, target, card, energySpent);
                     yield break;
                 case "warrior_molten":
                     source.State.energy += Mathf.Max(0, target.State.burn / 3);
@@ -1735,7 +1836,7 @@ namespace HexDemo
                     yield break;
                 case "warrior_blood_forged":
                     yield return ResolveDirectAttackRoutine(source, target, ScaleWarriorChainValue(source, "bleed", 6 + source.State.warriorBleedEventsThisBattle * 3));
-                    RefundEnergyOnHit(source, target, energySpent);
+                    RefundEnergyOnHit(source, target, card, energySpent);
                     yield break;
                 case "warrior_blood_sword":
                     source.State.warriorDamageMultiplierThisTurn = 2;
@@ -2131,12 +2232,12 @@ namespace HexDemo
                 yield return ApplyKnockbackRoutine(source, targets[i], distance);
         }
 
-        private void RefundEnergyOnHit(HexBattleUnit source, HexBattleUnit target, int energySpent)
+        private void RefundEnergyOnHit(HexBattleUnit source, HexBattleUnit target, HexCardInstance card, int energySpent)
         {
-            if (source == null || target == null || energySpent <= 0)
+            if (source == null || target == null)
                 return;
 
-            source.State.energy += energySpent;
+            KeywordTriggerEngine.OnHitConfirmed(source, card, energySpent);
         }
 
         private void RecycleOneExhaustedCard(HexBattleUnit source)
@@ -3437,6 +3538,13 @@ namespace HexDemo
             return card?.definition != null && card.definition.id == "status_fear_token";
         }
 
+        private static void ExhaustHandCardsTriggeredByPlay(HexBattleUnit unit, HexCardInstance playedCard)
+        {
+            var cardsToExhaust = KeywordTriggerEngine.CollectHandCardsToExhaustAfterPlay(unit, playedCard);
+            for (int i = 0; i < cardsToExhaust.Count; i++)
+                unit.Deck.DiscardFromHand(cardsToExhaust[i], exhaust: true);
+        }
+
         private static bool HasCardTag(HexCardDefinition definition, string tag)
         {
             if (definition?.tags == null || string.IsNullOrWhiteSpace(tag))
@@ -3997,6 +4105,8 @@ namespace HexDemo
             int exhaustedCost = unit.GetCardEnergyCost(card);
             card.temporaryCostModifier = 0;
             card.costsNoEnergyThisTurn = false;
+            card.ResetRoundFlags();
+            card.ResetActionFlags();
             unit.Deck.DiscardFromHand(card, exhaust);
             if (!exhaust)
                 return;

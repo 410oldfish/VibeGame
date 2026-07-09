@@ -216,6 +216,45 @@ namespace HexDemo
         public bool is_directional;
     }
 
+    /// <summary>
+    /// 卡牌运行时临时词缀层：不污染定义数据，区分“回合内”与“单次动作内”两种生命周期。
+    /// </summary>
+    public sealed class CardRuntimeFlagLayer
+    {
+        private readonly HashSet<string> _roundFlags = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _actionFlags = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool Has(string flagId)
+        {
+            return !string.IsNullOrWhiteSpace(flagId) && (_roundFlags.Contains(flagId) || _actionFlags.Contains(flagId));
+        }
+
+        public void AddRoundFlag(string flagId)
+        {
+            if (!string.IsNullOrWhiteSpace(flagId))
+                _roundFlags.Add(flagId);
+        }
+
+        public void AddActionFlag(string flagId)
+        {
+            if (!string.IsNullOrWhiteSpace(flagId))
+                _actionFlags.Add(flagId);
+        }
+
+        public void Remove(string flagId)
+        {
+            if (string.IsNullOrWhiteSpace(flagId))
+                return;
+
+            _roundFlags.Remove(flagId);
+            _actionFlags.Remove(flagId);
+        }
+
+        public void ResetRoundFlags() => _roundFlags.Clear();
+
+        public void ResetActionFlags() => _actionFlags.Clear();
+    }
+
     [Serializable]
     public sealed class HexCardInstance
     {
@@ -226,12 +265,31 @@ namespace HexDemo
         public bool costsNoEnergyThisTurn;
         public bool exhaustWhenPlayed;
 
+        private readonly CardRuntimeFlagLayer _runtimeFlags = new();
+
         public HexCardInstance(HexCardDefinition definition)
         {
             runtimeId = Guid.NewGuid().ToString("N");
             this.definition = definition;
             upgraded = definition != null && definition.upgraded;
         }
+
+        public bool HasRuntimeFlag(string flagId) => _runtimeFlags.Has(flagId);
+
+        /// <summary>添加临时词缀。roundScope 为 true 表示回合结束清理，否则动作结束清理。</summary>
+        public void AddTempFlag(string flagId, bool roundScope = true)
+        {
+            if (roundScope)
+                _runtimeFlags.AddRoundFlag(flagId);
+            else
+                _runtimeFlags.AddActionFlag(flagId);
+        }
+
+        public void RemoveTempFlag(string flagId) => _runtimeFlags.Remove(flagId);
+
+        public void ResetRoundFlags() => _runtimeFlags.ResetRoundFlags();
+
+        public void ResetActionFlags() => _runtimeFlags.ResetActionFlags();
     }
 
     [Serializable]
@@ -1293,6 +1351,26 @@ namespace HexDemo
             for (int i = 0; i < effects.Count; i++)
             {
                 if (effects[i].keywordType == keywordType)
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool ShouldExhaustAtEndOfTurn(HexCardDefinition definition)
+        {
+            if (definition == null)
+                return false;
+
+            if (HasKeyword(definition, HexCardKeywordType.Void))
+                return true;
+
+            if (definition.tags == null)
+                return false;
+
+            for (int i = 0; i < definition.tags.Length; i++)
+            {
+                if (string.Equals(definition.tags[i], "移出游戏", StringComparison.OrdinalIgnoreCase))
                     return true;
             }
 

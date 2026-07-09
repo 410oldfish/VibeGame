@@ -338,11 +338,13 @@ namespace HexDemo
 
             Deck.DiscardHand(
                 card => HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Retain) || extraRetainedIds.Contains(card.runtimeId),
-                card => HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Void));
+                card => KeywordTriggerEngine.ShouldExhaustAtTurnEnd(this, card));
             for (int i = 0; i < Deck.Hand.Count; i++)
             {
                 Deck.Hand[i].temporaryCostModifier = 0;
                 Deck.Hand[i].costsNoEnergyThisTurn = false;
+                Deck.Hand[i].ResetRoundFlags();
+                Deck.Hand[i].ResetActionFlags();
             }
             if (State.vulnerable > 0)
                 State.vulnerable = Mathf.Max(0, State.vulnerable - 1);

@@ -97,6 +97,8 @@ namespace HexDemo
         private const string BattleHudCanvasPrefabPath = "Assets/Prefabs/UI/Battle/BattleHudCanvas.prefab";
         private const string BattlePanelDir = "Assets/Prefabs/UI/Battle/Panels/";
         private const string CardViewItemPrefabPath = "Assets/Prefabs/UI/Battle/CardViewItem.prefab";
+        private const string ResourcesBattleDir = "UI/Battle/";
+        private const string ResourcesBattlePanelsDir = "UI/Battle/Panels/";
 
         private static readonly string[] BattlePanelNames =
         {
@@ -106,6 +108,7 @@ namespace HexDemo
             "ActionPanel",
             "DrawPile",
             "DiscardPile",
+            "ExhaustPile",
             "PlayLog",
             "PileModal",
             "EnemyHandOverlay",
@@ -116,14 +119,20 @@ namespace HexDemo
         private RectTransform _handRoot;
         private TextMeshProUGUI _turnLabel;
         private TextMeshProUGUI _statusLabel;
+        private TextMeshProUGUI _playerStripLabel;
+        private HexStatusIconBar _playerStatusBar;
+        private RectTransform _enemyIntentPanel;
+        private readonly List<HexEnemyIntentRow> _enemyIntentRows = new();
         private TextMeshProUGUI _deckLabel;
         private TextMeshProUGUI _resourceLabel;
         private Button _endTurnButton;
         private Button _drawPileButton;
         private Button _discardPileButton;
+        private Button _exhaustPileButton;
         private Button _playLogButton;
         private TextMeshProUGUI _drawPileLabel;
         private TextMeshProUGUI _discardPileLabel;
+        private TextMeshProUGUI _exhaustPileLabel;
         private RectTransform _pileModal;
         private TextMeshProUGUI _pileModalTitle;
         private RectTransform _pileModalContent;
@@ -158,14 +167,70 @@ namespace HexDemo
             if (_controller == null)
                 return;
 
-            _turnLabel.text = _controller.GetTurnSummary();
-            _statusLabel.text = _controller.GetStatusSummary();
+            var snapshot = _controller.GetBattleHudSnapshot();
+            _turnLabel.text = snapshot.phaseLabel;
+            if (_playerStripLabel != null)
+            {
+                _playerStripLabel.text =
+                    $"生命 {snapshot.player.currentHealth}/{snapshot.player.maxHealth}  护甲 {snapshot.player.armor}  能量 {snapshot.player.energy}/{snapshot.player.maxEnergy}  力量 {snapshot.player.power}";
+            }
+
+            if (_playerStatusBar != null)
+                _playerStatusBar.Refresh(snapshot.player.statuses);
+
+            if (_statusLabel != null)
+            {
+                _statusLabel.text = string.Empty;
+                _statusLabel.gameObject.SetActive(_playerStripLabel == null);
+            }
+
+            RefreshEnemyIntentRows(snapshot);
             _deckLabel.text = _controller.GetDeckSummary();
             _resourceLabel.text = _controller.GetResourceSummary();
-            _endTurnButton.interactable = _controller.CanLocalPlayerEndTurn();
-            _drawPileLabel.text = $"Draw\n{_controller.GetLocalDrawPile().Count}";
-            _discardPileLabel.text = $"Discard\n{_controller.GetLocalDiscardPile().Count}";
+            _endTurnButton.interactable = snapshot.canEndTurn;
+            _drawPileLabel.text = $"抽牌\n{snapshot.piles.draw}";
+            _discardPileLabel.text = $"弃牌\n{snapshot.piles.discard}";
+            if (_exhaustPileLabel != null)
+                _exhaustPileLabel.text = $"消耗\n{snapshot.piles.exhaust}";
             RebuildHand();
+        }
+
+        private void RefreshEnemyIntentRows(BattleHudSnapshot snapshot)
+        {
+            if (_enemyIntentPanel == null)
+                return;
+
+            if (_enemyIntentRows.Count == 0)
+            {
+                for (int i = 0; i < _enemyIntentPanel.childCount; i++)
+                {
+                    var row = _enemyIntentPanel.GetChild(i).GetComponent<HexEnemyIntentRow>();
+                    if (row != null)
+                        _enemyIntentRows.Add(row);
+                }
+            }
+
+            float y = 0f;
+            for (int i = 0; i < _enemyIntentRows.Count; i++)
+            {
+                bool active = i < snapshot.enemies.Count;
+                _enemyIntentRows[i].gameObject.SetActive(active);
+                if (!active)
+                    continue;
+
+                var rowRect = _enemyIntentRows[i].GetComponent<RectTransform>();
+                rowRect.anchoredPosition = new Vector2(0f, y);
+                y -= 112f;
+                _enemyIntentRows[i].Refresh(snapshot.enemies[i]);
+            }
+
+            _enemyIntentPanel.sizeDelta = new Vector2(_enemyIntentPanel.sizeDelta.x, Mathf.Max(112f, -y));
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+                CloseTopModal();
         }
 
         private void RebuildHand()
@@ -195,106 +260,100 @@ namespace HexDemo
 
         private GameObject CreateCardRoot(string name)
         {
+            var prefab = LoadBattlePrefab("CardViewItem");
 #if UNITY_EDITOR
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CardViewItemPrefabPath);
-            if (prefab != null)
-            {
-                var card = Instantiate(prefab);
-                card.name = name;
-                if (card.GetComponent<RectTransform>() == null)
-                    card.AddComponent<RectTransform>();
-                if (card.GetComponent<Image>() == null)
-                    card.AddComponent<Image>();
-                if (card.GetComponent<CanvasGroup>() == null)
-                    card.AddComponent<CanvasGroup>();
-                if (card.GetComponent<HexCardView>() == null)
-                    card.AddComponent<HexCardView>();
-                card.GetComponent<RectTransform>().sizeDelta = new Vector2(CardWidth, CardHeight);
-                return card;
-            }
+            if (prefab == null)
+                prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CardViewItemPrefabPath);
 #endif
-            var cardGO = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(CanvasGroup), typeof(HexCardView));
-            cardGO.GetComponent<RectTransform>().sizeDelta = new Vector2(CardWidth, CardHeight);
-            return cardGO;
+            if (prefab == null)
+            {
+                Debug.LogError("Missing CardViewItem prefab. Battle UI is prefab-only and cannot fallback to procedural card root.");
+                return new GameObject(name);
+            }
+
+            var card = Instantiate(prefab);
+            card.name = name;
+            if (card.GetComponent<RectTransform>() == null ||
+                card.GetComponent<Image>() == null ||
+                card.GetComponent<CanvasGroup>() == null ||
+                card.GetComponent<HexCardView>() == null)
+            {
+                Debug.LogError("CardViewItem prefab is missing required components (RectTransform/Image/CanvasGroup/HexCardView).");
+            }
+            else
+            {
+                card.GetComponent<RectTransform>().sizeDelta = new Vector2(CardWidth, CardHeight);
+            }
+
+            return card;
         }
 
         private void BuildCanvas()
         {
-            if (TryBuildCanvasFromPrefab())
-                return;
+            if (!TryBuildCanvasFromPrefab())
+                Debug.LogError("Battle UI is prefab-only. Failed to load BattleHudCanvas and required panels from prefabs.");
+        }
 
-            var canvasGO = new GameObject("BattleHUD_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasGO.transform.SetParent(transform, false);
-            _canvas = canvasGO.GetComponent<Canvas>();
-            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _canvas.sortingOrder = 100;
+        private void EnsureStructuredHud(Transform canvasRoot)
+        {
+            var hud = canvasRoot.Find("HUD");
+            if (hud != null)
+            {
+                if (_playerStripLabel == null)
+                    _playerStripLabel = hud.Find("PlayerStrip")?.GetComponent<TextMeshProUGUI>();
 
-            var scaler = canvasGO.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+                if (_playerStatusBar == null)
+                {
+                    _playerStatusBar = hud.GetComponent<HexStatusIconBar>();
+                    if (_playerStatusBar != null)
+                    {
+                        _playerStatusBar.EnsureBuilt(hud);
+                        var statusRect = _playerStatusBar.Root;
+                        statusRect.anchoredPosition = new Vector2(18f, -78f);
+                        statusRect.sizeDelta = new Vector2(420f, 28f);
+                    }
+                }
+            }
 
-            var hudPanel = CreatePanel(canvasGO.transform, "HUD", new Vector2(20f, -20f), new Vector2(460f, 200f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
-            _turnLabel = CreateTMP(hudPanel.transform, "Turn", new Vector2(18f, -16f), new Vector2(420f, 34f), 30, FontStyles.Bold);
-            _statusLabel = CreateTMP(hudPanel.transform, "Status", new Vector2(18f, -58f), new Vector2(420f, 86f), 22, FontStyles.Normal);
-            _deckLabel = CreateTMP(hudPanel.transform, "Deck", new Vector2(18f, -146f), new Vector2(420f, 34f), 20, FontStyles.Normal);
+            if (_enemyIntentPanel == null)
+            {
+                _enemyIntentPanel = FindByPath<RectTransform>(canvasRoot, "EnemyIntentPanel");
+            }
 
-            var resourcePanel = CreatePanel(canvasGO.transform, "ResourcePanel", new Vector2(20f, 20f), new Vector2(240f, 92f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-            _resourceLabel = CreateTMP(resourcePanel.transform, "Resource", new Vector2(16f, -16f), new Vector2(208f, 58f), 26, FontStyles.Bold);
+            if (_exhaustPileButton == null)
+            {
+                var exhaust = canvasRoot.Find("ExhaustPile");
+                if (exhaust != null)
+                {
+                    _exhaustPileButton = exhaust.GetComponent<Button>() ?? exhaust.gameObject.AddComponent<Button>();
+                    _exhaustPileLabel = exhaust.Find("ExhaustLabel")?.GetComponent<TextMeshProUGUI>();
+                }
+            }
+        }
 
-            var handPanel = CreatePanel(canvasGO.transform, "HandPanel", new Vector2(0f, 0f), new Vector2(1180f, 292f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-            handPanel.GetComponent<Image>().color = new Color(0.08f, 0.1f, 0.14f, 0.85f);
-            _handRoot = new GameObject("HandRoot", typeof(RectTransform), typeof(HorizontalLayoutGroup)).GetComponent<RectTransform>();
-            _handRoot.SetParent(handPanel.transform, false);
-            _handRoot.anchorMin = new Vector2(0.5f, 0f);
-            _handRoot.anchorMax = new Vector2(0.5f, 0f);
-            _handRoot.pivot = new Vector2(0.5f, 0f);
-            _handRoot.anchoredPosition = new Vector2(0f, 18f);
-            _handRoot.sizeDelta = new Vector2(1120f, 248f);
+        private static GameObject LoadBattlePrefab(string assetName)
+        {
+            var fromResources = Resources.Load<GameObject>(ResourcesBattlePanelsDir + assetName);
+            if (fromResources != null)
+                return fromResources;
 
-            var layout = _handRoot.GetComponent<HorizontalLayoutGroup>();
-            layout.spacing = 18f;
-            layout.childAlignment = TextAnchor.LowerCenter;
-            layout.childControlHeight = false;
-            layout.childControlWidth = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
+            fromResources = Resources.Load<GameObject>(ResourcesBattleDir + assetName);
+            if (fromResources != null)
+                return fromResources;
 
-            var buttonPanel = CreatePanel(canvasGO.transform, "ActionPanel", new Vector2(-20f, 20f), new Vector2(220f, 88f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f));
-            _endTurnButton = buttonPanel.gameObject.AddComponent<Button>();
-            _endTurnButton.onClick.AddListener(_controller.RequestEndTurn);
-            var buttonText = CreateTMP(buttonPanel.transform, "ButtonLabel", new Vector2(0f, 0f), new Vector2(220f, 88f), 28, FontStyles.Bold);
-            buttonText.alignment = TextAlignmentOptions.Center;
-            buttonText.text = "End Turn";
+#if UNITY_EDITOR
+            if (assetName == "BattleHudCanvas")
+                return AssetDatabase.LoadAssetAtPath<GameObject>(BattleHudCanvasPrefabPath);
 
-            var drawPanel = CreatePanel(canvasGO.transform, "DrawPile", new Vector2(20f, 132f), new Vector2(170f, 112f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-            _drawPileButton = drawPanel.gameObject.AddComponent<Button>();
-            _drawPileButton.onClick.AddListener(() => OpenPileView("Draw Pile", _controller.GetLocalDrawPile()));
-            _drawPileLabel = CreateTMP(drawPanel.transform, "DrawLabel", new Vector2(0f, 0f), new Vector2(170f, 112f), 24, FontStyles.Bold);
-            _drawPileLabel.alignment = TextAlignmentOptions.Center;
-
-            var discardPanel = CreatePanel(canvasGO.transform, "DiscardPile", new Vector2(-20f, 132f), new Vector2(170f, 112f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f));
-            _discardPileButton = discardPanel.gameObject.AddComponent<Button>();
-            _discardPileButton.onClick.AddListener(() => OpenPileView("Discard Pile", _controller.GetLocalDiscardPile()));
-            _discardPileLabel = CreateTMP(discardPanel.transform, "DiscardLabel", new Vector2(0f, 0f), new Vector2(170f, 112f), 24, FontStyles.Bold);
-            _discardPileLabel.alignment = TextAlignmentOptions.Center;
-
-            var playLogPanel = CreatePanel(canvasGO.transform, "PlayLog", new Vector2(20f, 256f), new Vector2(170f, 74f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-            _playLogButton = playLogPanel.gameObject.AddComponent<Button>();
-            _playLogButton.onClick.AddListener(OpenPlayLogView);
-            var playLogLabel = CreateTMP(playLogPanel.transform, "PlayLogLabel", new Vector2(0f, 0f), new Vector2(170f, 74f), 22, FontStyles.Bold);
-            playLogLabel.alignment = TextAlignmentOptions.Center;
-            playLogLabel.text = "Replay";
-
-            BuildPileModal(canvasGO.transform);
-            BuildEnemyHandPopup(canvasGO.transform);
-            BuildPlayLogModal(canvasGO.transform);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(BattlePanelDir + assetName + ".prefab");
+#else
+            return null;
+#endif
         }
 
         private bool TryBuildCanvasFromPrefab()
         {
-#if UNITY_EDITOR
-            var canvasPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(BattleHudCanvasPrefabPath);
+            var canvasPrefab = LoadBattlePrefab("BattleHudCanvas");
             if (canvasPrefab == null)
                 return false;
 
@@ -325,9 +384,11 @@ namespace HexDemo
             _endTurnButton = FindByPath<Button>(canvasGO.transform, "ActionPanel");
             _drawPileButton = FindByPath<Button>(canvasGO.transform, "DrawPile");
             _discardPileButton = FindByPath<Button>(canvasGO.transform, "DiscardPile");
+            _exhaustPileButton = FindByPath<Button>(canvasGO.transform, "ExhaustPile");
             _playLogButton = FindByPath<Button>(canvasGO.transform, "PlayLog");
             _drawPileLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "DrawPile/DrawLabel");
             _discardPileLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "DiscardPile/DiscardLabel");
+            _exhaustPileLabel = FindByPath<TextMeshProUGUI>(canvasGO.transform, "ExhaustPile/ExhaustLabel");
             _handRoot = FindByPath<RectTransform>(canvasGO.transform, "HandPanel/HandRoot");
 
             _pileModal = FindByPath<RectTransform>(canvasGO.transform, "PileModal");
@@ -347,17 +408,20 @@ namespace HexDemo
                 return false;
             }
 
+            EnsureStructuredHud(canvasGO.transform);
+            if (_enemyIntentPanel == null)
+                Debug.LogWarning("EnemyIntentPanel not found in battle prefabs. Enemy intent row UI will be skipped.");
+            if (_playerStatusBar == null)
+                Debug.LogWarning("HexStatusIconBar component is missing on HUD prefab. Player status icons will be skipped.");
+            if (_exhaustPileButton == null || _exhaustPileLabel == null)
+                Debug.LogWarning("ExhaustPile prefab block is missing. Exhaust pile button will be skipped.");
             WireButtonActions();
             return true;
-#else
-            return false;
-#endif
         }
 
-#if UNITY_EDITOR
         private GameObject InstantiateBattlePanel(string panelName, Transform parent)
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BattlePanelDir + panelName + ".prefab");
+            var prefab = LoadBattlePrefab(panelName);
             if (prefab == null)
                 return null;
 
@@ -365,7 +429,6 @@ namespace HexDemo
             go.name = panelName;
             return go;
         }
-#endif
 
         private static T FindByPath<T>(Transform root, string path) where T : Component
         {
@@ -376,7 +439,6 @@ namespace HexDemo
         private bool ValidateCoreReferences()
         {
             return _turnLabel != null &&
-                   _statusLabel != null &&
                    _deckLabel != null &&
                    _resourceLabel != null &&
                    _endTurnButton != null &&
@@ -403,9 +465,14 @@ namespace HexDemo
             _endTurnButton.onClick.AddListener(_controller.RequestEndTurn);
 
             _drawPileButton.onClick.RemoveAllListeners();
-            _drawPileButton.onClick.AddListener(() => OpenPileView("Draw Pile", _controller.GetLocalDrawPile()));
+            _drawPileButton.onClick.AddListener(() => OpenPileView("抽牌堆", _controller.GetLocalDrawPile()));
             _discardPileButton.onClick.RemoveAllListeners();
-            _discardPileButton.onClick.AddListener(() => OpenPileView("Discard Pile", _controller.GetLocalDiscardPile()));
+            _discardPileButton.onClick.AddListener(() => OpenPileView("弃牌堆", _controller.GetLocalDiscardPile()));
+            if (_exhaustPileButton != null)
+            {
+                _exhaustPileButton.onClick.RemoveAllListeners();
+                _exhaustPileButton.onClick.AddListener(() => OpenPileView("消耗堆", _controller.GetLocalExhaustPile()));
+            }
             _playLogButton.onClick.RemoveAllListeners();
             _playLogButton.onClick.AddListener(OpenPlayLogView);
 
@@ -530,7 +597,7 @@ namespace HexDemo
                 return;
 
             _enemyHandOverlay.gameObject.SetActive(true);
-            _enemyHandTitle.text = $"{GetUnitDisplayName(enemy)} Hand";
+            _enemyHandTitle.text = $"{GetUnitDisplayName(enemy)} 手牌";
             ClearChildren(_enemyHandContent);
 
             var cards = _controller.GetEnemyHand(enemy);
@@ -562,6 +629,24 @@ namespace HexDemo
         {
             if (_enemyHandOverlay != null)
                 _enemyHandOverlay.gameObject.SetActive(false);
+        }
+
+        public void CloseTopModal()
+        {
+            if (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf)
+            {
+                CloseEnemyHandPopup();
+                return;
+            }
+
+            if (_pileModal != null && _pileModal.gameObject.activeSelf)
+            {
+                _pileModal.gameObject.SetActive(false);
+                return;
+            }
+
+            if (_playLogModal != null && _playLogModal.gameObject.activeSelf)
+                _playLogModal.gameObject.SetActive(false);
         }
 
         public void ShowFloatingCombatText(HexBattleUnit unit, HexFloatingFeedbackKind kind, int amount)
@@ -725,7 +810,7 @@ namespace HexDemo
             _playLogModal = CreatePanel(parent, "PlayLogModal", Vector2.zero, new Vector2(920f, 640f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             _playLogModal.gameObject.SetActive(false);
             var title = CreateTMP(_playLogModal.transform, "Title", new Vector2(32f, -24f), new Vector2(720f, 40f), 30, FontStyles.Bold);
-            title.text = "Play Replay";
+            title.text = "出牌回放";
 
             var scrollRoot = new GameObject("ScrollRoot", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
             scrollRoot.transform.SetParent(_playLogModal.transform, false);
@@ -776,7 +861,7 @@ namespace HexDemo
             closeButton.onClick.AddListener(() => _playLogModal.gameObject.SetActive(false));
             var closeText = CreateTMP(closePanel.transform, "CloseLabel", new Vector2(0f, 0f), new Vector2(180f, 64f), 24, FontStyles.Bold);
             closeText.alignment = TextAlignmentOptions.Center;
-            closeText.text = "Close";
+            closeText.text = "关闭";
         }
 
         private void OpenPlayLogView()
@@ -789,7 +874,7 @@ namespace HexDemo
             var records = _controller.GetPlayLog();
             if (records == null || records.Count == 0)
             {
-                CreatePlayLogLine("No cards played yet.");
+                CreatePlayLogLine("尚无出牌记录。");
                 return;
             }
 
@@ -883,7 +968,7 @@ namespace HexDemo
             closeButton.onClick.AddListener(() => _pileModal.gameObject.SetActive(false));
             var closeText = CreateTMP(closePanel.transform, "CloseLabel", new Vector2(0f, 0f), new Vector2(180f, 64f), 24, FontStyles.Bold);
             closeText.alignment = TextAlignmentOptions.Center;
-            closeText.text = "Close";
+            closeText.text = "关闭";
         }
 
         private void OpenPileView(string title, IReadOnlyList<HexCardInstance> cards)
@@ -951,78 +1036,6 @@ namespace HexDemo
 
             CreateCardFace(cardGO.transform, card, card.definition.energyCost < 0 ? 0 : card.definition.energyCost);
             return holder;
-        }
-    }
-
-    public sealed class HexCardView : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
-    {
-        private HexBattleController _controller;
-        private HexCardInstance _card;
-        private RectTransform _rectTransform;
-        private CanvasGroup _canvasGroup;
-        private Transform _originalParent;
-        private Vector2 _originalAnchoredPosition;
-        private Canvas _rootCanvas;
-        private Image _image;
-
-        public void Initialize(HexBattleController controller, HexCardInstance card, Canvas rootCanvas)
-        {
-            _controller = controller;
-            _card = card;
-            _rectTransform = GetComponent<RectTransform>();
-            _canvasGroup = GetComponent<CanvasGroup>();
-            _rootCanvas = rootCanvas;
-            _image = GetComponent<Image>();
-        }
-
-        public void OnBeginDrag(PointerEventData eventData)
-        {
-            if (_controller == null)
-                return;
-
-            _originalParent = _rectTransform.parent;
-            _originalAnchoredPosition = _rectTransform.anchoredPosition;
-            if (_rootCanvas != null)
-                _rectTransform.SetParent(_rootCanvas.transform, true);
-            _canvasGroup.blocksRaycasts = false;
-            _canvasGroup.alpha = 0f;
-            if (_image != null)
-                _image.raycastTarget = false;
-            _controller.BeginCardDrag(_card);
-            OnDrag(eventData);
-        }
-
-        public void OnDrag(PointerEventData eventData)
-        {
-            if (_controller == null)
-                return;
-
-            _rectTransform.position = eventData.position;
-            _controller.UpdateDraggedCard(eventData.position);
-        }
-
-        public void OnEndDrag(PointerEventData eventData)
-        {
-            if (_controller == null)
-            {
-                Object.Destroy(gameObject);
-                return;
-            }
-
-            _canvasGroup.blocksRaycasts = true;
-            bool played = _controller.EndCardDrag(eventData.position);
-            if (!played)
-            {
-                _rectTransform.SetParent(_originalParent, false);
-                _rectTransform.anchoredPosition = _originalAnchoredPosition;
-                _canvasGroup.alpha = 1f;
-                if (_image != null)
-                    _image.raycastTarget = true;
-            }
-            else
-            {
-                Object.Destroy(gameObject);
-            }
         }
     }
 }
