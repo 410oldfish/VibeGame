@@ -462,7 +462,7 @@ namespace HexDemo
             grid.Build();
             ConfigureBattleCamera(grid);
 
-            var playerCoord = FindClosestExistingCoord(grid, new HexAxialCoord(3, 5));
+            var playerCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, new HexAxialCoord(3, 5));
             var playerRoot = new GameObject("PlayerUnit");
             playerRoot.transform.SetParent(roomRoot.transform, false);
             var playerAnimator = SpawnCharacterModel(playerRoot.transform, LoadStarter02Prefab());
@@ -502,7 +502,7 @@ namespace HexDemo
                 enemyRoot.transform.SetParent(roomRoot.transform, false);
                 var enemyAnimator = SpawnCharacterModel(enemyRoot.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab());
                 var enemyUnit = enemyRoot.AddComponent<HexBattleUnit>();
-                var enemyCoord = FindClosestExistingCoord(grid, desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)], enemyUnits.Select(unit => unit.State.coord).Append(playerCoord));
+                var enemyCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)], enemyUnits.Select(unit => unit.State.coord).Append(playerCoord));
                 string enemyDefinitionId = GetEncounterEnemyDefinitionId(i, nodeType);
                 var enemyDefinition = HexCardLibrary.GetEnemyDefinition(enemyDefinitionId);
                 enemyUnit.Initialize(new HexBattleUnitState
@@ -584,11 +584,11 @@ namespace HexDemo
                 maxMovePoints = 0,
                 currentMovePoints = 0,
                 attackRange = 1,
-                coord = FindClosestExistingCoord(grid, new HexAxialCoord(3, 4)),
+                coord = HexBattleSetupUtility.FindClosestExistingCoord(grid, new HexAxialCoord(3, 4)),
             }, playerAnimator, _runState.deckDefinitions);
             playerUnit.SnapTo(grid, 0.03f);
 
-            var campfire = SpawnCampfire(roomRoot.transform, grid, FindClosestExistingCoord(grid, new HexAxialCoord(5, 4)));
+            var campfire = SpawnCampfire(roomRoot.transform, grid, HexBattleSetupUtility.FindClosestExistingCoord(grid, new HexAxialCoord(5, 4)));
 
             var restController = roomRoot.AddComponent<HexRestController>();
             restController.campfireObject = campfire;
@@ -1524,29 +1524,6 @@ namespace HexDemo
 
             var eventSystemGO = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
             Object.DontDestroyOnLoad(eventSystemGO);
-        }
-
-        private static HexAxialCoord FindClosestExistingCoord(HexGrid grid, HexAxialCoord desired, IEnumerable<HexAxialCoord> blockedCoords = null)
-        {
-            var blocked = blockedCoords != null ? new HashSet<HexAxialCoord>(blockedCoords) : null;
-            float bestDistance = float.PositiveInfinity;
-            HexAxialCoord bestCoord = desired;
-            foreach (var kvp in grid.Tiles)
-            {
-                if (blocked != null && blocked.Contains(kvp.Key))
-                    continue;
-                if (kvp.Value != null && kvp.Value.BlocksMovement)
-                    continue;
-
-                float distance = HexAxialCoord.Distance(kvp.Key, desired);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestCoord = kvp.Key;
-                }
-            }
-
-            return bestCoord;
         }
 
         private static string GetEncounterEnemyDefinitionId(int enemyIndex, HexMapNodeType nodeType)

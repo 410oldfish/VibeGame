@@ -61,6 +61,9 @@ namespace HexDemo
 
         [Header("Tile Model")]
         public GameObject tilePrefab;
+        [Header("Tile Structure Visual")]
+        public GameObject ruinVisualPrefab;
+        public GameObject highGroundVisualPrefab;
         [Range(1f, 1.3f)]
         public float tileFillScale = 1.08f;
 
@@ -147,6 +150,15 @@ namespace HexDemo
             tile.coord = coord;
             tile.grid = this;
             tile.topHeight = topHeight;
+            var tileView = tileGO.AddComponent<TileView>();
+            tileView.Initialize(tileGO.transform);
+            var model = new TileModel
+            {
+                coord = coord,
+                topHeight = topHeight,
+            };
+            var controller = new TileController(this, model, tileView);
+            tile.InitializeMvc(model, tileView, controller);
             tile.CacheVisuals();
             InitializeFeatureTerrain(tile);
 
@@ -455,17 +467,20 @@ namespace HexDemo
         }
     }
 
-    public sealed class HexTile : MonoBehaviour
+    public sealed class HexTile : MonoBehaviour, IHexAttackTarget
     {
         public HexAxialCoord coord;
         public HexGrid grid;
         public float topHeight;
-        public HexTerrainBaseType baseTerrain = HexTerrainBaseType.Ground;
-        public HexTerrainStructureType structureType = HexTerrainStructureType.None;
-        public int structureHp;
-        public HexTerrainPickupType pickupType = HexTerrainPickupType.None;
-        public int pickupAmount;
+        [SerializeField] private HexTerrainBaseType _baseTerrain = HexTerrainBaseType.Ground;
+        [SerializeField] private HexTerrainStructureType _structureType = HexTerrainStructureType.None;
+        [SerializeField] private int _structureHp;
+        [SerializeField] private HexTerrainPickupType _pickupType = HexTerrainPickupType.None;
+        [SerializeField] private int _pickupAmount;
         private readonly List<HexTileEffectState> _effects = new();
+        private TileModel _model;
+        private TileView _tileView;
+        private TileController _tileController;
 
         private Renderer[] _renderers = System.Array.Empty<Renderer>();
         private MeshRenderer _clickRenderer;
@@ -498,32 +513,90 @@ namespace HexDemo
         private static readonly Color PickupTint = new(0.95f, 0.78f, 0.22f, 1f);
 
         public IReadOnlyList<HexTileEffectState> Effects => _effects;
-        public bool BlocksMovement => baseTerrain == HexTerrainBaseType.Pit || structureType != HexTerrainStructureType.None;
-        public bool BlocksLineOfSight => structureType == HexTerrainStructureType.HighGround;
-        public bool HasRuin => structureType == HexTerrainStructureType.Ruin && structureHp > 0;
+        public HexTerrainBaseType baseTerrain
+        {
+            get => _model != null ? _model.baseTerrain : _baseTerrain;
+            set
+            {
+                _baseTerrain = value;
+                if (_model != null)
+                    _model.baseTerrain = value;
+                ApplyVisuals();
+            }
+        }
+
+        public HexTerrainStructureType structureType => _model != null ? _model.structureType : _structureType;
+        public int structureHp => _model != null ? _model.structureHp : _structureHp;
+        public HexTerrainPickupType pickupType => _model != null ? _model.pickupType : _pickupType;
+        public int pickupAmount => _model != null ? _model.pickupAmount : _pickupAmount;
+        public bool BlocksMovement => _model != null ? _model.BlocksMovement : (baseTerrain == HexTerrainBaseType.Pit || structureType != HexTerrainStructureType.None);
+        public bool BlocksLineOfSight => _model != null ? _model.BlocksLineOfSight : structureType == HexTerrainStructureType.HighGround;
+        public bool HasRuin => _model != null ? _model.HasRuin : (structureType == HexTerrainStructureType.Ruin && structureHp > 0);
+        public HexAxialCoord TargetCoord => coord;
+        public bool IsAttackTargetValid => HasRuin;
+        public HexAttackTargetKind AttackTargetKind => HexAttackTargetKind.Structure;
+
+        public TileController Controller => _tileController;
+
+        public void InitializeMvc(TileModel model, TileView view, TileController controller)
+        {
+            _model = model;
+            _tileView = view;
+            _tileController = controller;
+            if (_model != null)
+            {
+                _model.effects.Clear();
+                _model.effects.AddRange(_effects);
+                _model.baseTerrain = _baseTerrain;
+            }
+        }
 
         public void SetStructure(HexTerrainStructureType type, int hp = 0)
         {
-            structureType = type;
-            structureHp = type == HexTerrainStructureType.Ruin ? Mathf.Max(1, hp) : 0;
+            if (_tileController != null)
+                _tileController.SetStructure(type, hp);
+            else
+            {
+                _structureType = type;
+                _structureHp = type == HexTerrainStructureType.Ruin ? Mathf.Max(1, hp) : 0;
+            }
             ApplyVisuals();
         }
 
         public void ClearStructure()
         {
-            structureType = HexTerrainStructureType.None;
-            structureHp = 0;
+            if (_tileController != null)
+                _tileController.ClearStructure();
+            else
+            {
+                _structureType = HexTerrainStructureType.None;
+                _structureHp = 0;
+            }
             ApplyVisuals();
         }
 
         public bool DamageStructure(int amount, out bool destroyed)
         {
+            if (_tileController != null)
+            {
+                bool handled = _tileController.DamageStructure(amount, out destroyed);
+                if (!handled || !destroyed)
+                {
+                    ApplyVisuals();
+                    return handled;
+                }
+
+                RollDefaultRuinPickup();
+                ApplyVisuals();
+                return true;
+            }
+
             destroyed = false;
             if (structureType != HexTerrainStructureType.Ruin || amount <= 0)
                 return false;
 
-            structureHp = Mathf.Max(0, structureHp - amount);
-            destroyed = structureHp <= 0;
+            _structureHp = Mathf.Max(0, _structureHp - amount);
+            destroyed = _structureHp <= 0;
             if (destroyed)
             {
                 ClearStructure();
@@ -539,8 +612,13 @@ namespace HexDemo
 
         public void SetPickup(HexTerrainPickupType type, int amount)
         {
-            pickupType = type;
-            pickupAmount = Mathf.Max(0, amount);
+            _pickupType = type;
+            _pickupAmount = Mathf.Max(0, amount);
+            if (_model != null)
+            {
+                _model.pickupType = _pickupType;
+                _model.pickupAmount = _pickupAmount;
+            }
             ApplyVisuals();
         }
 
@@ -548,8 +626,13 @@ namespace HexDemo
         {
             amount = pickupAmount;
             var type = pickupType;
-            pickupType = HexTerrainPickupType.None;
-            pickupAmount = 0;
+            _pickupType = HexTerrainPickupType.None;
+            _pickupAmount = 0;
+            if (_model != null)
+            {
+                _model.pickupType = HexTerrainPickupType.None;
+                _model.pickupAmount = 0;
+            }
             ApplyVisuals();
             return type;
         }
@@ -586,12 +669,14 @@ namespace HexDemo
                 return;
             }
 
-            _effects.Add(new HexTileEffectState
+            var state = new HexTileEffectState
             {
                 effectType = effectType,
                 stacks = stacks,
                 duration = duration,
-            });
+            };
+            _effects.Add(state);
+            _model?.effects.Add(state.Clone());
         }
 
         public bool TryGetEffect(HexTileEffectType effectType, out HexTileEffectState effect)
@@ -614,7 +699,11 @@ namespace HexDemo
             for (int i = _effects.Count - 1; i >= 0; i--)
             {
                 if (_effects[i].effectType == effectType)
+                {
                     _effects.RemoveAt(i);
+                    if (_model != null && i < _model.effects.Count)
+                        _model.effects.RemoveAt(i);
+                }
             }
         }
 
@@ -623,8 +712,14 @@ namespace HexDemo
             for (int i = _effects.Count - 1; i >= 0; i--)
             {
                 _effects[i].duration = Mathf.Max(0, _effects[i].duration - 1);
+                if (_model != null && i < _model.effects.Count)
+                    _model.effects[i].duration = _effects[i].duration;
                 if (_effects[i].duration <= 0)
+                {
                     _effects.RemoveAt(i);
+                    if (_model != null && i < _model.effects.Count)
+                        _model.effects.RemoveAt(i);
+                }
             }
         }
 
@@ -722,6 +817,8 @@ namespace HexDemo
 
         private void ApplyVisuals()
         {
+            _tileController?.RefreshStructureVisual();
+
             Color tileTint = Color.clear;
             float tileTintStrength = 0f;
             if (_pathVisible)

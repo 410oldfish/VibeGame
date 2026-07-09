@@ -496,6 +496,8 @@ namespace HexDemo
             {
                 if (!TryGetHoveredTile(out var hoveredTile, out _))
                     return false;
+                if (RequiresTraversableTileTarget(_draggedCard.definition) && !CanUseAsMovementTarget(hoveredTile))
+                    return false;
 
                 if (IsTileActionCard(_draggedCard.definition))
                 {
@@ -527,6 +529,18 @@ namespace HexDemo
 
             if (!TryGetHoveredUnit(out var targetUnit))
             {
+                if (_draggedCard.definition.cardType == HexCardType.Attack &&
+                    _draggedCard.definition.effectRadius <= 0 &&
+                    TryGetHoveredTile(out var hoveredRuinTile, out _) &&
+                    CanAttackRuinTile(_playerUnit, _draggedCard.definition, hoveredRuinTile))
+                {
+                    if (!SubmitAuthoritativeCommand(HexNetworkCommandType.PlayCard, ToPayload(_draggedCard, hoveredRuinTile.coord)))
+                        return true;
+
+                    StartCoroutine(ResolveCardRoutine(_playerUnit, _playerUnit, _draggedCard, hoveredRuinTile.coord));
+                    return true;
+                }
+
                 if (_draggedCard.definition.effectRadius <= 0)
                     return false;
 
@@ -643,9 +657,20 @@ namespace HexDemo
                 yield break;
             }
 
+            bool resolvedRuinTargetAttack = false;
             switch (card.definition.effectType)
             {
                 case HexCardEffectType.Attack:
+                    if (card.definition.targetType == HexCardTargetType.EnemyUnit &&
+                        directionalCoord.HasValue &&
+                        target == source &&
+                        ResolveRuinAttackTarget(source, card.definition, directionalCoord.Value))
+                    {
+                        resolvedRuinTargetAttack = true;
+                        yield return ResolveRuinTargetAttackRoutine(source, directionalCoord.Value, card);
+                        break;
+                    }
+
                     if (card.definition.targetType == HexCardTargetType.Direction && directionalCoord.HasValue)
                     {
                         yield return ResolveDirectionalAttackRoutine(source, directionalCoord.Value, card);
@@ -713,7 +738,14 @@ namespace HexDemo
 
             ApplySelfKeywordEffects(source, card);
 
-            if (card.definition.targetType == HexCardTargetType.Direction && directionalCoord.HasValue)
+            if (resolvedRuinTargetAttack)
+            {
+                if (grid.TryGetTile(targetedCoord, out var ruinTile))
+                    ruinTile.FlashClick();
+                source.RefreshLabel();
+                _ui.Refresh();
+            }
+            else if (card.definition.targetType == HexCardTargetType.Direction && directionalCoord.HasValue)
             {
                 FlashDirectionalArea(directionalCoord.Value, source, card.definition);
                 RefreshAliveUnitLabels();
@@ -872,6 +904,25 @@ namespace HexDemo
                 if (targets[i] != null && !targets[i].IsAlive)
                     yield return targets[i].PlayDeathAndCleanup();
             }
+        }
+
+        private IEnumerator ResolveRuinTargetAttackRoutine(HexBattleUnit source, HexAxialCoord coord, HexCardInstance card)
+        {
+            if (source == null || card?.definition == null || grid == null)
+                yield break;
+            if (!grid.TryGetTile(coord, out var tile) || tile == null || !TileHasRuin(tile))
+                yield break;
+
+            source.FaceTarget(grid.AxialToWorld(coord));
+            source.PlayAttackAnimation();
+            yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
+
+            int damage = GetModifiedDamage(source, source, card.definition.amount + Mathf.Max(0, source.State.strength));
+            tile.DamageStructure(damage, out bool destroyed);
+            tile.FlashClick();
+            source.State.damageDealtThisTurn += Mathf.Max(0, damage);
+            if (destroyed)
+                Debug.Log($"Ruin at {coord.q},{coord.r} was destroyed by direct attack.");
         }
 
         private void FlashDirectionalArea(HexAxialCoord aimedCoord, HexBattleUnit source, HexCardDefinition definition)
@@ -2003,7 +2054,7 @@ namespace HexDemo
 
             foreach (var neighbor in grid.GetNeighbors(center))
             {
-                if (grid.TryGetTile(neighbor, out var tile) && tile != null && tile.HasRuin)
+                if (grid.TryGetTile(neighbor, out var tile) && tile != null && TileHasRuin(tile))
                     return true;
             }
 
@@ -2017,7 +2068,7 @@ namespace HexDemo
 
             foreach (var neighbor in grid.GetNeighbors(center))
             {
-                if (grid.TryGetTile(neighbor, out var tile) && tile != null && tile.HasRuin)
+                if (grid.TryGetTile(neighbor, out var tile) && tile != null && TileHasRuin(tile))
                 {
                     tile.ClearStructure();
                     tile.FlashClick();
@@ -2039,7 +2090,7 @@ namespace HexDemo
             if (!grid.IsCoordInside(behind))
                 return true;
 
-            return grid.TryGetTile(behind, out var tile) && tile != null && tile.BlocksMovement;
+            return grid.TryGetTile(behind, out var tile) && tile != null && !TileCanEnter(tile);
         }
 
         private IEnumerator ResolveJumpMoveRoutine(HexBattleUnit source, HexAxialCoord destination, int maxSteps)
@@ -2065,7 +2116,7 @@ namespace HexDemo
             var candidates = grid.GetNeighbors(source.State.coord)
                 .Where(coord => grid.TryGetTile(coord, out var tile) &&
                                 tile != null &&
-                                !tile.BlocksMovement &&
+                                TileCanEnter(tile) &&
                                 !IsOccupied(coord, source))
                 .OrderBy(_ => Random.value)
                 .Take(Mathf.Max(1, count))
@@ -2092,7 +2143,7 @@ namespace HexDemo
             {
                 if (!grid.TryGetTile(coords[i], out var tile) || tile == null)
                     continue;
-                if (tile.BlocksMovement || IsOccupied(coords[i], source))
+                if (!TileCanEnter(tile) || IsOccupied(coords[i], source))
                     continue;
 
                 tile.SetStructure(HexTerrainStructureType.Ruin, 3);
@@ -2120,7 +2171,7 @@ namespace HexDemo
                     yield return ResolveDirectAttackRoutine(source, victim, 4, knockback: 1);
                 }
 
-                if (grid.TryGetTile(current, out var tile) && tile != null && tile.BlocksLineOfSight)
+                if (grid.TryGetTile(current, out var tile) && tile != null && TileBlocksLineOfSight(tile))
                     break;
             }
         }
@@ -2145,7 +2196,7 @@ namespace HexDemo
 
             for (int i = 0; i < _temporaryObstacles.Count; i++)
             {
-                if (grid.TryGetTile(_temporaryObstacles[i], out var tile) && tile != null && tile.HasRuin && tile.structureHp <= 1)
+                if (grid.TryGetTile(_temporaryObstacles[i], out var tile) && tile != null && TileHasRuin(tile) && TileStructureHp(tile) <= 1)
                     tile.ClearStructure();
             }
 
@@ -3533,6 +3584,85 @@ namespace HexDemo
                     definition.effectType == HexCardEffectType.Move);
         }
 
+        private static bool RequiresTraversableTileTarget(HexCardDefinition definition)
+        {
+            return definition != null &&
+                   definition.targetType == HexCardTargetType.Tile &&
+                   definition.effectType == HexCardEffectType.Move;
+        }
+
+        private static bool CanUseAsMovementTarget(HexTile tile)
+        {
+            if (tile == null)
+                return false;
+
+            return TileCanEnter(tile);
+        }
+
+        private static bool TileCanEnter(HexTile tile)
+        {
+            if (tile == null)
+                return false;
+            return tile.Controller != null ? tile.Controller.CanEnter() : !tile.BlocksMovement;
+        }
+
+        private static bool TileHasRuin(HexTile tile)
+        {
+            return tile != null && (tile.Controller != null ? tile.Controller.Model.HasRuin : tile.HasRuin);
+        }
+
+        private static bool TileIsHighGround(HexTile tile)
+        {
+            if (tile == null)
+                return false;
+            return tile.Controller != null
+                ? tile.Controller.Model.structureType == HexTerrainStructureType.HighGround
+                : tile.structureType == HexTerrainStructureType.HighGround;
+        }
+
+        private static bool TileBlocksLineOfSight(HexTile tile)
+        {
+            if (tile == null)
+                return false;
+            return tile.Controller != null ? tile.Controller.Model.BlocksLineOfSight : tile.BlocksLineOfSight;
+        }
+
+        private static HexTerrainPickupType TilePickupType(HexTile tile)
+        {
+            if (tile == null)
+                return HexTerrainPickupType.None;
+            return tile.Controller != null ? tile.Controller.Model.pickupType : tile.pickupType;
+        }
+
+        private static int TileStructureHp(HexTile tile)
+        {
+            if (tile == null)
+                return 0;
+            return tile.Controller != null ? tile.Controller.Model.structureHp : tile.structureHp;
+        }
+
+        private static bool ResolveRuinAttackTarget(HexBattleUnit source, HexCardDefinition definition, HexAxialCoord targetedCoord)
+        {
+            return source != null &&
+                   definition != null &&
+                   definition.cardType == HexCardType.Attack &&
+                   definition.targetType == HexCardTargetType.EnemyUnit &&
+                   !targetedCoord.Equals(source.State.coord);
+        }
+
+        private bool CanAttackRuinTile(HexBattleUnit source, HexCardDefinition definition, HexTile tile)
+        {
+            if (source == null || definition == null || tile == null)
+                return false;
+            if (definition.cardType != HexCardType.Attack || definition.targetType != HexCardTargetType.EnemyUnit)
+                return false;
+            if (!TileHasRuin(tile))
+                return false;
+            if (HexAxialCoord.Distance(source.State.coord, tile.coord) > definition.castRange + GetWarriorFirstAttackRangeBonus(_draggedCard))
+                return false;
+            return HasLineOfSight(source.State.coord, tile.coord);
+        }
+
         private static bool IsFearToken(HexCardInstance card)
         {
             return card?.definition != null && card.definition.id == "status_fear_token";
@@ -3699,7 +3829,7 @@ namespace HexDemo
             if (grid == null || !grid.TryGetTile(coord, out var tile) || tile == null)
                 return false;
 
-            if (tile.structureType != HexTerrainStructureType.HighGround)
+            if (!TileIsHighGround(tile))
                 return false;
 
             tile.ClearStructure();
@@ -3716,7 +3846,7 @@ namespace HexDemo
                 .Where(coord => grid.TryGetTile(coord, out var tile) &&
                                 tile != null &&
                                 !coord.Equals(source.State.coord) &&
-                                !tile.BlocksMovement &&
+                                TileCanEnter(tile) &&
                                 !IsOccupied(coord, source))
                 .OrderBy(_ => Random.value)
                 .ToList();
@@ -3741,7 +3871,7 @@ namespace HexDemo
                 .Where(coord => !coord.Equals(source.State.coord) &&
                                 grid.TryGetTile(coord, out var tile) &&
                                 tile != null &&
-                                !tile.BlocksMovement &&
+                                TileCanEnter(tile) &&
                                 !IsOccupied(coord, source))
                 .OrderBy(coord => HexAxialCoord.Distance(source.State.coord, coord))
                 .ThenBy(_ => Random.value)
@@ -3818,7 +3948,7 @@ namespace HexDemo
                 return false;
 
             var candidates = HexBattlePathing.GetCoordsInRange(center, radius)
-                .Where(coord => grid.TryGetTile(coord, out var tile) && tile != null && tile.structureType == HexTerrainStructureType.HighGround)
+                .Where(coord => grid.TryGetTile(coord, out var tile) && tile != null && TileIsHighGround(tile))
                 .OrderBy(_ => Random.value)
                 .ToList();
             if (candidates.Count == 0)
@@ -3961,7 +4091,7 @@ namespace HexDemo
 
         private void ApplyPickupToUnit(HexTile tile, HexBattleUnit unit)
         {
-            if (tile == null || unit == null || tile.pickupType == HexTerrainPickupType.None)
+            if (tile == null || unit == null || TilePickupType(tile) == HexTerrainPickupType.None)
                 return;
 
             HexTerrainPickupType pickupType = tile.ConsumePickup(out int amount);
@@ -4142,7 +4272,7 @@ namespace HexDemo
 
             foreach (var coord in coords)
             {
-                if (grid.TryGetTile(coord, out var tile) && tile != null && tile.HasRuin)
+                if (grid.TryGetTile(coord, out var tile) && tile != null && TileHasRuin(tile))
                     return true;
             }
 
@@ -4159,7 +4289,7 @@ namespace HexDemo
             {
                 if (!seen.Add(coord))
                     continue;
-                if (!grid.TryGetTile(coord, out var tile) || tile == null || !tile.HasRuin)
+                if (!grid.TryGetTile(coord, out var tile) || tile == null || !TileHasRuin(tile))
                     continue;
 
                 tile.DamageStructure(amount, out bool destroyed);
@@ -4250,7 +4380,7 @@ namespace HexDemo
                 var coord = lineCoords[i];
                 if (coord.Equals(targetCoord))
                     return true;
-                if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksLineOfSight)
+                if (grid.TryGetTile(coord, out var tile) && tile != null && TileBlocksLineOfSight(tile))
                     return false;
             }
 
@@ -4673,7 +4803,7 @@ namespace HexDemo
             if (grid == null || !grid.IsCoordInside(coord))
                 return true;
 
-            if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksMovement)
+            if (grid.TryGetTile(coord, out var tile) && tile != null && !TileCanEnter(tile))
                 return true;
 
             if (CanIgnoreOccupiedTilesWhileMoving(movingUnit))
@@ -4687,7 +4817,7 @@ namespace HexDemo
             if (grid == null || !grid.IsCoordInside(coord))
                 return true;
 
-            if (grid.TryGetTile(coord, out var tile) && tile != null && tile.BlocksMovement)
+            if (grid.TryGetTile(coord, out var tile) && tile != null && !TileCanEnter(tile))
                 return true;
 
             return IsOccupied(coord, movingUnit) || HasSceneObstacleAtCoord(coord, movingUnit);
@@ -4989,7 +5119,7 @@ namespace HexDemo
 
                 bool blocksLine = grid.TryGetTile(current, out var currentTile) &&
                                   currentTile != null &&
-                                  currentTile.BlocksLineOfSight;
+                                  TileBlocksLineOfSight(currentTile);
                 if (blocksLine)
                     break;
 
@@ -5011,9 +5141,10 @@ namespace HexDemo
         private void UpdateHoverFeedback()
         {
             if (_draggedCard != null && _draggedCard.definition.targetType == HexCardTargetType.EnemyUnit &&
-                TryGetHoveredUnit(out var hoveredUnit) && hoveredUnit != null)
+                TryGetHoveredAttackTarget(_playerUnit, _draggedCard.definition, out var hoveredTarget) &&
+                hoveredTarget != null)
             {
-                if (grid.TryGetTile(hoveredUnit.State.coord, out var hoveredUnitTile))
+                if (grid.TryGetTile(hoveredTarget.TargetCoord, out var hoveredUnitTile))
                     SetHoveredTile(hoveredUnitTile, true);
                 return;
             }
@@ -5107,6 +5238,26 @@ namespace HexDemo
             return unit != null;
         }
 
+        private bool TryGetHoveredAttackTarget(HexBattleUnit attacker, HexCardDefinition definition, out IHexAttackTarget target)
+        {
+            target = null;
+            if (TryGetHoveredUnit(out var unit) && unit != null && unit.IsAttackTargetValid)
+            {
+                target = unit;
+                return true;
+            }
+
+            if (!TryGetHoveredTile(out var tile, out _))
+                return false;
+            if (CanAttackRuinTile(attacker, definition, tile))
+            {
+                target = tile;
+                return true;
+            }
+
+            return false;
+        }
+
         private bool TryGetCoordFromGroundPlane(Ray ray, out HexAxialCoord coord)
         {
             coord = default;
@@ -5179,6 +5330,8 @@ namespace HexDemo
                     bool targetable = _draggedCard.definition.effectRadius > 0
                         ? HasEnemyInArea(coord, _draggedCard.definition.effectRadius)
                         : true;
+                    if (RequiresTraversableTileTarget(_draggedCard.definition) && !CanUseAsMovementTarget(tile))
+                        targetable = false;
                     tile.SetRangeIndicator(true, targetable);
                 }
                 return;
@@ -5192,6 +5345,12 @@ namespace HexDemo
                 bool targetable = _draggedCard.definition.effectRadius > 0
                     ? HasEnemyInArea(coord, _draggedCard.definition.effectRadius)
                     : _enemyUnits.Any(enemy => enemy != null && enemy.IsAlive && enemy.State.coord.Equals(coord));
+                if (!targetable &&
+                    _draggedCard.definition.cardType == HexCardType.Attack &&
+                    _draggedCard.definition.targetType == HexCardTargetType.EnemyUnit)
+                {
+                    targetable = CanAttackRuinTile(_playerUnit, _draggedCard.definition, tile);
+                }
                 tile.SetRangeIndicator(true, targetable);
             }
         }

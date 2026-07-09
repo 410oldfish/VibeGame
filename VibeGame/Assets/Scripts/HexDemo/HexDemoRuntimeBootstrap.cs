@@ -265,7 +265,9 @@ namespace HexDemo
             HexAxialCoord bestCoord = desired;
             foreach (var kvp in grid.Tiles)
             {
-                if (kvp.Value != null && kvp.Value.BlocksMovement)
+                if (kvp.Value != null && kvp.Value.Controller != null && !kvp.Value.Controller.CanEnter())
+                    continue;
+                if (kvp.Value != null && kvp.Value.Controller == null && kvp.Value.BlocksMovement)
                     continue;
 
                 float distance = HexAxialCoord.Distance(kvp.Key, desired);

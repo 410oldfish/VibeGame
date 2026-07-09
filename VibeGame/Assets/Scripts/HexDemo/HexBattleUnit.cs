@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 namespace HexDemo
 {
-    public sealed class HexBattleUnit : MonoBehaviour
+    public sealed class HexBattleUnit : MonoBehaviour, IHexAttackTarget
     {
         private enum StatusIconKind
         {
@@ -67,6 +67,9 @@ namespace HexDemo
         public HexBattleUnitState State { get; private set; }
         public HexDeckState Deck { get; } = new();
         public bool IsAlive => State != null && State.currentHealth > 0;
+        public HexAxialCoord TargetCoord => State != null ? State.coord : default;
+        public bool IsAttackTargetValid => IsAlive;
+        public HexAttackTargetKind AttackTargetKind => HexAttackTargetKind.Unit;
 
         private Animator _animator;
         private CapsuleCollider _targetCollider;

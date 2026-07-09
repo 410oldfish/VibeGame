@@ -1,10 +1,12 @@
 using TEngine;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace HexDemo
 {
     public static class HexGameModule
     {
+        private const string BattleSandboxSceneName = "BattleSandbox";
         private static RootModule _root;
         private static IUpdateDriver _update;
         private static ITimerModule _timer;
@@ -29,6 +31,11 @@ namespace HexDemo
             HexNetworkSessionController.EnsureExists();
             HexDemo.Network.GameNetworkManager.EnsureExists();
             GameEvent.Send(HexGameEvents.GameStarted);
+
+            // BattleSandbox 场景是纯战斗直达入口，不拉起冒险主流程与其 UI。
+            if (SceneManager.GetActiveScene().name == BattleSandboxSceneName)
+                return;
+
             HexAdventureController.TryBootstrap();
         }
 
