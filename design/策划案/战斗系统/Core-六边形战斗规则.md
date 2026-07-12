@@ -1,4 +1,4 @@
-# 《VibeGame》六边形战斗规则
+﻿# 《VibeGame》六边形战斗规则
 
 > **文档状态**：草案 v0.3  
 > **Layer**：Core

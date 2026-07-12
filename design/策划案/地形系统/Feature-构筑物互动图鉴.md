@@ -1,10 +1,10 @@
-# 《VibeGame》构筑物互动图鉴
+﻿# 《VibeGame》构筑物互动图鉴
 
 > **文档状态**：Content 图鉴 v0.2  
 > **Layer**：Feature（Content 向）  
 > **Priority**：Post-MVP 扩充（MVP 实例见 §2 索引 **已投入** 行）  
 > **关联主文档**：[`Feature-地形与地形改装规则.md`](Feature-地形与地形改装规则.md)  
-> **机制 enum**：`Barrier`（障碍）\| `Barricade`（残骸）  
+> **机制 enum**：`Barrier`（障碍）\| `Ruin`（残骸）  
 > **已投入登记**：[`../设计规范/Feature-已投入设计词条登记.md`](../设计规范/Feature-已投入设计词条登记.md) §3
 
 ## Summary
@@ -25,9 +25,9 @@
 | --- | --- |
 | `propId` | 唯一 ID，layout 引用 |
 | `displayName` | UI 显示名 |
-| `structureType` | **`Barrier`** \| **`Barricade`** |
-| `barricadeHP` | 仅 Barricade；默认见条 |
-| `blocksLOS` | 默认：Barrier **true**，Barricade **false**（可 override） |
+| `structureType` | **`Barrier`** \| **`Ruin`** |
+| `RuinHP` | 仅 Ruin；默认见条 |
+| `blocksLOS` | 默认：Barrier **true**，Ruin **false**（可 override） |
 | `destroyBy` | `special_only` \| `normal_attack` \| `both`（罕见） |
 | `onRemove` | 移除/HP 归零时效果列表（见 §1.1） |
 | `onHit` | 每次被攻击穿透扣 HP 时（可选） |
@@ -69,19 +69,19 @@
 | propId                                           | 显示名    | 类型        |      HP | MVP     | 移除后果                                       | 敌人联动                                 |
 | ------------------------------------------------ | ------ | --------- | ------: | ------- | ------------------------------------------ | ------------------------------------ |
 | [`stone_pillar`](#31-stone_pillar--石台)           | 石台     | Barrier   |       — | **MVP** | 无                                          |                                      |
-| [`wood_crate`](#32-wood_crate--木箱)               | 木箱     | Barricade |       4 | **MVP** | 随机破旧武器掉落，可投掷                               | 拥有哥布林敌人的场景中可能出现                      |
+| [`wood_crate`](#32-wood_crate--木箱)               | 木箱     | Ruin |       4 | **MVP** | 随机破旧武器掉落，可投掷                               | 拥有哥布林敌人的场景中可能出现                      |
 | [`life_tree_bough`](#33-life_tree_bough--生命树·枝桠) | 生命树·枝桠 | Barrier   |       — | Ch1+    | 掉落治愈球，恢复 **20%** 最大生命                      | 拥有活墙壁敌人的场景中可能出现                      |
-| [`iron_brazier`](#34-iron_brazier--火盆)           | 火盆     | Barricade |       6 | Ch1+    | 本格+邻格1 **着火场地** 2 回合（每回合开始 3 伤）            | 拥有地狱犬敌人的场景中可能出现                      |
-| [`bone_pile`](#35-bone_pile--骸骨堆)                | 骸骨堆    | Barricade |       1 | Ch1+    | 召唤骷髅                                       | 拥有寄生藤蔓敌人的场景中可能出现                     |
-| [`treasure_chest`](#36-treasure_chest--宝箱)       | 宝箱     | Barricade | 6/12/18 | Ch1+    | 根据宝箱等级，在战斗结束后，给予20/50/100金币，或者普通/罕见/稀有卡牌奖励 | 所有战斗中都有可能出现，敌人越困难，                   |
-| [`mimic_chest`](#37-mimic_chest--伪装箱)            | 伪装箱    | Barricade |       4 | Ch1+    | 揭示宝箱怪                                      | 宝箱怪                                  |
-| [`barricade_planks`](#38-barricade_planks--拒马木栅) | 拒马木栅   | Barricade |       5 | Ch1+    | 无 / 木刺覆盖                                   | 拥有哥布林敌人的场景中可能出<br>被击退到该残骸上会额外受到20点伤害 |
-| [`ale_barrel`](#39-ale_barrel--火药桶)              | 火药桶    | Barricade |       3 | Ch2+    | 延迟一回合消失，并造成邻格2 40点伤害                       | —                                    |
+| [`iron_brazier`](#34-iron_brazier--火盆)           | 火盆     | Ruin |       6 | Ch1+    | 本格+邻格1 **着火场地** 2 回合（每回合开始 3 伤）            | 拥有地狱犬敌人的场景中可能出现                      |
+| [`bone_pile`](#35-bone_pile--骸骨堆)                | 骸骨堆    | Ruin |       1 | Ch1+    | 召唤骷髅                                       | 拥有寄生藤蔓敌人的场景中可能出现                     |
+| [`treasure_chest`](#36-treasure_chest--宝箱)       | 宝箱     | Ruin | 6/12/18 | Ch1+    | 根据宝箱等级，在战斗结束后，给予20/50/100金币，或者普通/罕见/稀有卡牌奖励 | 所有战斗中都有可能出现，敌人越困难，                   |
+| [`mimic_chest`](#37-mimic_chest--伪装箱)            | 伪装箱    | Ruin |       4 | Ch1+    | 揭示宝箱怪                                      | 宝箱怪                                  |
+| [`Ruin_planks`](#38-Ruin_planks--拒马木栅) | 拒马木栅   | Ruin |       5 | Ch1+    | 无 / 木刺覆盖                                   | 拥有哥布林敌人的场景中可能出<br>被击退到该残骸上会额外受到20点伤害 |
+| [`ale_barrel`](#39-ale_barrel--火药桶)              | 火药桶    | Ruin |       3 | Ch2+    | 延迟一回合消失，并造成邻格2 40点伤害                       | —                                    |
 | [`shrine_fragment`](#312-shrine_fragment--圣坛残片)  | 圣坛残片   | Barrier   |       — | Ch2+    | 圣域覆盖 2 回合                                  | 净化 debuff                            |
-| [`thorn_bramble`](#313-thorn_bramble--荆棘丛)       | 荆棘丛    | Barricade |       3 | Ch1+    | -                                          | 寄生藤蔓 寄生残骸                            |
-| [`cult_brazier`](#314-cult_brazier--邪火祭盆)        | 邪火祭盆   | Barricade |       5 | Ch2+    | 敌方全体 +1 力量                                 | 邪教精英                                 |
-| [`webbed_corpse`](#315-webbed_corpse--蛛网尸骸)      | 蜘蛛巢    | Barricade |       4 | Ch2+    | 束缚  1 回合                                   | 蜘蛛类                                  |
-| [`holy_font_basin`](#316-holy_font_basin--圣水盆)   | 圣水盆    | Barricade |       4 | Ch2+    | 治疗覆盖 3 回合                                  |                                      |
+| [`thorn_bramble`](#313-thorn_bramble--荆棘丛)       | 荆棘丛    | Ruin |       3 | Ch1+    | -                                          | 寄生藤蔓 寄生残骸                            |
+| [`cult_brazier`](#314-cult_brazier--邪火祭盆)        | 邪火祭盆   | Ruin |       5 | Ch2+    | 敌方全体 +1 力量                                 | 邪教精英                                 |
+| [`webbed_corpse`](#315-webbed_corpse--蛛网尸骸)      | 蜘蛛巢    | Ruin |       4 | Ch2+    | 束缚  1 回合                                   | 蜘蛛类                                  |
+| [`holy_font_basin`](#316-holy_font_basin--圣水盆)   | 圣水盆    | Ruin |       4 | Ch2+    | 治疗覆盖 3 回合                                  |                                      |
 | 冰面                                               | 基础地形   | 是         |       否 | 否       | 主动移动时会额外滑行 **1** 格                         | 路径风险                                 |
 
 ---
@@ -108,8 +108,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **4** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **4** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | **MVP** |
 | `enemyHooks` | 哥布林遭遇；[`Feature-部落酋长.md`](../敌人系统/Feature-部落酋长.md) 落岩放置 **`propId: wood_crate`** |
@@ -140,8 +140,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **6** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **6** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 | `enemyHooks` | [`Feature-地狱犬.md`](../敌人系统/Feature-地狱犬.md) 场景 |
@@ -158,8 +158,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **1** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **1** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 | `enemyHooks` | 寄生藤蔓场景；[`Feature-骷髅.md`](../敌人系统/Feature-骷髅.md) |
@@ -174,8 +174,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **6** / **12** / **18**（普通 / 罕见 / 稀有档） |
+| `structureType` | **Ruin** |
+| `RuinHP` | **6** / **12** / **18**（普通 / 罕见 / 稀有档） |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 | `postBattleReward` | **true**（非战场拾取） |
@@ -192,8 +192,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **4** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **4** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 
@@ -204,12 +204,12 @@
 
 ---
 
-### 3.8 `barricade_planks` · 拒马木栅
+### 3.8 `Ruin_planks` · 拒马木栅
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **5** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **5** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 | `enemyHooks` | 哥布林狭道 |
@@ -225,8 +225,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **3** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **3** |
 | `destroyBy` | `normal_attack` |
 | `fuseTurns` | **1**（受击或碰撞可 **`arm`**；**下回合开始** 引爆） |
 | `mvpStatus` | Ch2+ |
@@ -255,8 +255,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **3** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **3** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
 | `enemyHooks` | [`Feature-寄生藤蔓.md`](../敌人系统/Feature-寄生藤蔓.md) **寄生残骸**（邻格互动） |
@@ -272,8 +272,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **5** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **5** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch2+ |
 
@@ -287,8 +287,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **4** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **4** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch2+ |
 
@@ -302,8 +302,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| `structureType` | **Barricade** |
-| `barricadeHP` | **4** |
+| `structureType` | **Ruin** |
+| `RuinHP` | **4** |
 | `destroyBy` | `normal_attack` |
 | `friendlyFire` | **false**（玩家攻击 **不** 扣 HP；**破障** 类可移除，Post-MVP） |
 | `mvpStatus` | Ch2+ |
@@ -355,7 +355,7 @@
 ## 6. 验收要点
 
 - **GIVEN** layout 引用合法 `propId`，**WHEN** Content 校验，**THEN** `structureType` 与 HP/destroyBy 一致。
-- **GIVEN** Barricade HP 归零，**WHEN** 移除完成，**THEN** 按条目的 `onRemove` 顺序结算（拾取/覆盖/召唤不互相吞没）。
+- **GIVEN** Ruin HP 归零，**WHEN** 移除完成，**THEN** 按条目的 `onRemove` 顺序结算（拾取/覆盖/召唤不互相吞没）。
 - **GIVEN** Barrier 仅受 `special_only`，**WHEN** 普通攻击穿透路径经过，**THEN** 不扣 HP、不触发 `onRemove`。
 - **GIVEN** `adjacentAura` 配置，**WHEN** 单位与 prop **邻接** 且站在 **普通地面**，**THEN** 光环生效（**不** 要求占构筑物格）。
 
