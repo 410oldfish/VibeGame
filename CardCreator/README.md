@@ -1,9 +1,31 @@
 # Card Creator
 
+## 牌表生成器（浏览设计表 / 组测试牌组）
+
+从 `Feature-战士卡牌.md` 加载卡牌属性，按体系/类别/稀有度筛选与排序，选中后加入牌表，并导出给 Battle Sandbox 使用。
+
+```powershell
+cd CardCreator
+python .\deck_table_builder.py
+# 或双击
+.\run_deck_table_builder.bat
+```
+
+功能：
+
+- 实时显示选中卡牌全部字段（费用、范围、词缀、体系、协同、描述等）
+- 按 **体系 / 类别 / 稀有度 / 分区 / 协同** 筛选，支持搜索与排序
+- 将选中卡牌加入牌表（支持 ×4、MVP 初始 9 张）
+- 导出 `exports/sandbox_deck.json`（含 `deckCardIds`）或纯 id 文本
+
+Unity id 会从 `HexBattleCore.cs` 的 `W("warrior_…", "中文名", …)` 自动匹配。
+
+## 旧版单卡草稿工具
+
 Run:
 
 ```powershell
-python .\Tools\CardCreator\card_creator.py
+python .\card_creator.py
 ```
 
 This tool lets you draft cards with these fields:

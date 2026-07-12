@@ -458,6 +458,56 @@ namespace HexDemo
             _exhaustPile.Add(new HexCardInstance(definition));
         }
 
+        public HexCardInstance TakeFromExhaustPileToHand(int index = 0)
+        {
+            if (index < 0 || index >= _exhaustPile.Count)
+                return null;
+
+            var card = _exhaustPile[index];
+            _exhaustPile.RemoveAt(index);
+            _hand.Add(card);
+            return card;
+        }
+
+        public void AddCardInstanceToHand(HexCardInstance card)
+        {
+            if (card == null)
+                return;
+
+            _hand.Add(card);
+        }
+
+        public bool TryRemoveFromDrawOrDiscard(Predicate<HexCardDefinition> predicate, out HexCardInstance card)
+        {
+            card = null;
+            if (predicate == null)
+                return false;
+
+            for (int i = _drawPile.Count - 1; i >= 0; i--)
+            {
+                var candidate = _drawPile[i];
+                if (candidate?.definition == null || !predicate(candidate.definition))
+                    continue;
+
+                _drawPile.RemoveAt(i);
+                card = candidate;
+                return true;
+            }
+
+            for (int i = _discardPile.Count - 1; i >= 0; i--)
+            {
+                var candidate = _discardPile[i];
+                if (candidate?.definition == null || !predicate(candidate.definition))
+                    continue;
+
+                _discardPile.RemoveAt(i);
+                card = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
         public void ClearBattleState()
         {
             _drawPile.Clear();
@@ -588,15 +638,25 @@ namespace HexDemo
         public bool warriorFearEventThisTurn;
         public bool warriorBleedEventThisTurn;
         public bool warriorMoveEventThisTurn;
+        public bool warriorExhaustEventThisTurn;
+        public bool warriorFocusEventThisTurn;
         public bool warriorBurnFinisherUsedThisTurn;
         public bool warriorFearFinisherUsedThisTurn;
         public bool warriorBleedFinisherUsedThisTurn;
         public bool warriorMoveFinisherUsedThisTurn;
+        public bool warriorExhaustFinisherUsedThisTurn;
+        public bool warriorFocusFinisherUsedThisTurn;
         public int warriorBleedEventsThisBattle;
         public int warriorBleedEventsThisTurn;
         public int warriorStrengthPerTurn;
         public bool warriorBloodPactActive;
         public int warriorNextAttackDamageBonus;
+        public int warriorNextAttackDamageBonusQueued;
+        public bool warriorFocusEffectDoubleThisCard;
+        public int warriorPendingEnergyNextTurn;
+        public bool warriorPreparedBlade;
+        public bool warriorScorchedEarthActive;
+        public bool warriorSkirmishArmorOnMove;
         public int warriorBloodForgedBonus;
         public int warriorDelayedBleed;
         public int warriorDamageMultiplierThisTurn;
@@ -707,7 +767,7 @@ namespace HexDemo
         private static readonly Regex VulnerableRegex = new(@"\u6613\u4f24\s*(\d+)", RegexOptions.Compiled);
         private static readonly Regex StunRegex = new(@"(?:\u51fb\u6655|\u7729\u6655)\s*(\d+)?", RegexOptions.Compiled);
         private static readonly Regex RetainRegex = new(@"\u4fdd\u7559", RegexOptions.Compiled);
-        private static readonly Regex ExhaustRegex = new(@"\u6d88\u8017", RegexOptions.Compiled);
+        private static readonly Regex ExhaustRegex = new(@"消耗。", RegexOptions.Compiled);
         private static readonly Regex BurnRegex = new(@"\u71c3\u70e7\s*(\d+)", RegexOptions.Compiled);
         private static readonly Regex EntangleRegex = new(@"\u7f20\u7ed5\s*(\d+)", RegexOptions.Compiled);
         private static readonly Regex VoidRegex = new(@"\u865a\u65e0", RegexOptions.Compiled);
@@ -1092,10 +1152,16 @@ namespace HexDemo
         {
             if (s_loadedWarriorPool == null)
             {
-                var fromDb = Database != null ? Database.BuildWarrior() : null;
-                s_loadedWarriorPool = fromDb != null && fromDb.Count > 0
-                    ? fromDb
-                    : new List<HexCardDefinition>(WarriorDesignCards);
+                // Prefer hard-coded design table so stale HexCardDatabase.asset cannot hide new cards.
+                if (WarriorDesignCards != null && WarriorDesignCards.Count > 0)
+                    s_loadedWarriorPool = new List<HexCardDefinition>(WarriorDesignCards);
+                else
+                {
+                    var fromDb = Database != null ? Database.BuildWarrior() : null;
+                    s_loadedWarriorPool = fromDb != null && fromDb.Count > 0
+                        ? fromDb
+                        : new List<HexCardDefinition>();
+                }
             }
 
             return s_loadedWarriorPool;
@@ -1143,7 +1209,7 @@ namespace HexDemo
             {
                 GetCardById("warrior_strike"), GetCardById("warrior_strike"), GetCardById("warrior_strike"), GetCardById("warrior_strike"),
                 GetCardById("warrior_defend"), GetCardById("warrior_defend"), GetCardById("warrior_defend"), GetCardById("warrior_defend"),
-                GetCardById("warrior_burning"),
+                GetCardById("warrior_move_forward"),
             };
         }
 
@@ -1441,114 +1507,87 @@ namespace HexDemo
             Color skillColor = new(0.25f, 0.48f, 0.82f, 1f);
             Color actionColor = new(0.42f, 0.64f, 0.34f, 1f);
             Color powerColor = new(0.55f, 0.34f, 0.78f, 1f);
-            Color burnColor = new(0.82f, 0.36f, 0.18f, 1f);
+            Color exhaustColor = new(0.72f, 0.42f, 0.2f, 1f);
+            Color focusColor = new(0.3f, 0.55f, 0.78f, 1f);
+            Color moveColor = new(0.42f, 0.64f, 0.34f, 1f);
             Color fearColor = new(0.38f, 0.34f, 0.58f, 1f);
-            Color bleedColor = new(0.64f, 0.18f, 0.18f, 1f);
 
             return new List<HexCardDefinition>
             {
+                // §1 基础
                 W("warrior_strike", "打击", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 6, 1, 0, "Starter", "6伤。", attackColor, "无"),
                 W("warrior_defend", "防御", HexCardType.Skill, HexCardEffectType.Defend, HexCardTargetType.Self, 1, 5, 0, 0, "Starter", "5格挡。", skillColor, "无"),
-                W("warrior_whirlwind", "旋风斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Self, 1, 2, 0, 2, "Starter", "环形2：2伤，击退1。", attackColor, "无"),
-                W("warrior_burning", "燃烧", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 2, "Starter", "环形2：敌方+1燃烧。", burnColor, "燃烧"),
+                W("warrior_whirlwind", "旋风斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Self, 1, 2, 0, 2, "Starter", "环形1：2伤，击退1。", attackColor, "无"),
                 W("warrior_quick_step", "快步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Baseline", "首发。移动1。消耗。虚无。", actionColor, "无", "首发", "移出游戏"),
+                W("warrior_close_step", "贴身步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 3, 0, "Starter", "移动1，或移动到邻格敌人的任意邻格。", actionColor, "无", "草案"),
 
+                // §2 过渡
                 W("warrior_heavy_blow", "重击", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 9, 1, 0, "Common", "9伤。", attackColor, "过渡"),
-                W("warrior_cleave", "顺劈", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 1, 4, 1, 0, "Common", "对最多2个邻格敌人各4伤。", attackColor, "过渡"),
-                W("warrior_dash_strike", "冲刺", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 3, 6, 1, 0, "Common", "命中无耗。移动1格并攻击直线方向敌人6伤。", attackColor, "过渡", "命中无耗"),
-                W("warrior_pursuit", "追击", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 3, 5, 1, 0, "Uncommon", "命中无耗。5伤，随后后退移动1格。", attackColor, "过渡", "命中无耗"),
-                W("warrior_battle_cry_transition", "战吼", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "消耗。获得2力量，消耗堆检索1张加入抽牌堆。", skillColor, "过渡", "消耗"),
-                W("warrior_ember", "余烬", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Common", "弃1张，抽牌堆检索1张。", skillColor, "过渡"),
-                W("warrior_warmup", "热身", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Common", "抽2张，消耗1张手牌。", skillColor, "过渡"),
-                W("warrior_iron_wall", "铁壁", HexCardType.Skill, HexCardEffectType.Defend, HexCardTargetType.Self, 2, 10, 0, 0, "Uncommon", "消耗，保留。10格挡，每被保留一回合+2格挡。", skillColor, "过渡", "消耗", "保留"),
+                W("warrior_cleave", "顺劈", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 1, 4, 1, 0, "Common", "对最多3个邻格敌人各4伤。", attackColor, "过渡"),
+                W("warrior_dash_strike", "冲刺", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 3, 6, 1, 0, "Common", "命中无耗。移动1并攻击该方向敌人6伤。", attackColor, "过渡", "命中无耗"),
+                W("warrior_pursuit", "追击", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 3, 10, 1, 0, "Uncommon", "命中无耗。10伤，随后后退1，弃1。", attackColor, "过渡", "命中无耗"),
                 W("warrior_true_courage", "真勇", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 7, 0, 0, "Uncommon", "7格挡，抽1。", skillColor, "过渡"),
-                W("warrior_armor_break_setup", "破甲", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 3, 0, 0, "Common", "下一张攻击+3伤，抽1。", skillColor, "过渡"),
-                W("warrior_numb", "麻木", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 4, 0, 0, "Uncommon", "消耗。若本回合已打出消耗牌，获得4费。", skillColor, "过渡", "消耗"),
-                W("warrior_simplify", "精简", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Rare", "消耗。从牌堆选2张消耗并打出。", skillColor, "过渡", "消耗"),
-                W("warrior_ember_chaos", "烬乱", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 2, 3, 0, 2, "Rare", "消耗。消耗手牌全部，每张对环形2敌人造成3伤。", attackColor, "过渡", "消耗"),
-                W("warrior_sidestep", "侧步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Common", "移动1，获得4格挡。", actionColor, "过渡"),
-                W("warrior_guillotine", "断头台", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 2, 2, 2, 0, "Uncommon", "移动2；落点邻格有敌人则击退1。", actionColor, "过渡"),
                 W("warrior_disarming_stare", "缴械凝视", HexCardType.Action, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 1, 1, 0, "Common", "邻格击退1。", actionColor, "过渡"),
+                W("warrior_guillotine", "断头台", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 2, 2, 2, 0, "Uncommon", "移动2；落点邻格有敌人则击退1。", actionColor, "过渡"),
                 W("warrior_battle_line", "战阵", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Rare", "本场每回合开始获得1力量。", powerColor, "过渡"),
-                W("warrior_immovable_mountain", "不动如山", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 3, 1, 0, 0, "Uncommon", "回合开始时，格挡不重置。", powerColor, "过渡"),
-                W("warrior_triple_slash", "连斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 2, 1, 0, "Uncommon", "2伤，攻击3次。", attackColor, "过渡"),
+                W("warrior_immovable_mountain", "不动如山", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 3, 1, 0, 0, "Uncommon", "回合开始时格挡不重置。", powerColor, "过渡"),
+                W("warrior_opening_stagger", "起手震慑", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击获得击退1。", powerColor, "过渡", "草案"),
+                W("warrior_opening_reach", "先手延展", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击距离+1。", powerColor, "过渡", "草案"),
+                W("warrior_leap_step", "跃迁步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "可跨越1个敌人或残骸后移动2。", actionColor, "过渡", "草案"),
+                W("warrior_blast_barrel", "爆破桶", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 8, 2, 0, "Uncommon", "给目标放置炸药桶（受击时范围8伤击退1）。", skillColor, "过渡", "草案"),
+                W("warrior_hook", "钩锁", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 4, 2, 0, "Common", "4伤；目标拉拽1。", attackColor, "过渡", "草案"),
+                W("warrior_break_slash", "破障斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 8, 1, 0, "Uncommon", "8伤；破坏邻格残骸。", attackColor, "过渡", "草案"),
+                W("warrior_rolling_siege", "滚石攻城", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Direction, 2, 4, 1, 0, "Rare", "消耗。破坏邻格残骸，直线滚石：每格4伤。", attackColor, "过渡", "草案"),
+                W("warrior_pierce_step", "穿垒步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "穿越残骸至对侧。", actionColor, "过渡", "草案"),
+                W("warrior_backwall_smash", "背障重击", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 34, 1, 0, "Rare", "消耗。身后是障碍时34伤，否则10伤。", attackColor, "过渡", "草案"),
+                W("warrior_dismantle_slash", "拆垒重斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 16, 1, 0, "Uncommon", "目标附近有残骸时16伤并破坏残骸，否则6伤。", attackColor, "过渡", "草案"),
 
-                W("warrior_burning_mark", "炽印", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 3, 1, 0, "Uncommon", "触发施加燃烧。目标+3燃烧。", burnColor, "燃烧", "事件"),
-                W("warrior_fire_tongue", "火舌", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 1, "Common", "邻格全体+1燃烧。", burnColor, "燃烧", "事件"),
-                W("warrior_burning_blade", "燃刃", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 6, 1, 0, "Uncommon", "6伤+2燃烧；目标已有燃烧时再+4燃烧。", burnColor, "燃烧", "收束"),
-                W("warrior_burning_wind", "焚风", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 2, 5, 0, 1, "Uncommon", "邻格全体5伤；目标每1层燃烧，本回合+2力量。", burnColor, "燃烧"),
-                W("warrior_grand_fire_slash", "豪火斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Direction, 2, 8, 1, 0, "Common", "直线1：8伤+2燃烧。", burnColor, "燃烧", "事件"),
-                W("warrior_fire_ring", "火圈", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 1, 3, 0, 1, "Common", "以自身为中心3伤+1燃烧。", burnColor, "燃烧", "事件"),
-                W("warrior_ignite", "引燃", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 0, 1, 0, "Uncommon", "造成目标燃烧层数伤害，传染1层燃烧给邻接敌人。", burnColor, "燃烧", "收束"),
-                W("warrior_combust", "爆燃", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 0, 1, 0, "Rare", "消耗。移除目标全部燃烧，造成层数×2伤害，获得层数等额格挡。", burnColor, "燃烧", "消耗", "收束"),
-                W("warrior_endless_fireworks", "无尽焰火", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 0, 1, 0, "Rare", "造成等同于目标燃烧层数的伤害。", burnColor, "燃烧"),
-                W("warrior_ember_brand", "余烬烙印", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 3, 8, 1, 0, "Rare", "命中无耗。移动1格+8伤+2燃烧；目标已有燃烧时命中无耗。", burnColor, "燃烧", "命中无耗", "收束"),
-                W("warrior_molten", "熔融", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 3, 1, 0, "Uncommon", "获得目标燃烧层数÷3的费用。", burnColor, "燃烧"),
-                W("warrior_double_burn", "双倍燃烧", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 2, 1, 0, "Uncommon", "消耗。目标燃烧层数×2。", burnColor, "燃烧", "消耗", "事件"),
-                W("warrior_ember_guard", "余烬护体", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 5, 0, 0, "Common", "5格挡；若任一敌人有燃烧，再+5格挡。", burnColor, "燃烧", "草案"),
-                W("warrior_blazing_step", "炽燃步伐", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "移动1；落点邻格敌人+2燃烧。", burnColor, "燃烧", "事件"),
-                W("warrior_inferno_heart", "炼狱之心", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Rare", "每回合开始对邻格有燃烧的敌人+1燃烧。", powerColor, "燃烧"),
+                // §3.1 消耗
+                W("warrior_warmup", "热身", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Common", "抽2，消耗手牌1。", exhaustColor, "消耗"),
+                W("warrior_numb", "麻木", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 4, 0, 0, "Uncommon", "消耗。若本回合已打出消耗牌，获得4费。", exhaustColor, "消耗", "消耗"),
+                W("warrior_simplify", "精简", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Rare", "消耗。从牌堆选2张消耗牌并打出。", exhaustColor, "消耗", "消耗"),
+                W("warrior_ember_chaos", "烬乱", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 2, 3, 0, 2, "Rare", "消耗。消耗手牌全部；每张对环形2敌人3伤。", exhaustColor, "消耗", "消耗"),
+                W("warrior_furnace_heart", "炉心", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Rare", "每当你消耗一张牌，抽1。", powerColor, "消耗"),
+                W("warrior_scorched_earth", "焦土协议", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "回合结束时可消耗手牌1；若如此则下回合+1费。", powerColor, "消耗", "草案"),
+                W("warrior_scrap_recycle", "废料回收", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "消耗。若本回合已打出消耗牌，从消耗堆将1张牌加入手牌。", exhaustColor, "消耗", "消耗"),
+                W("warrior_fuel", "助燃", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 10, 0, 0, "Common", "消耗。若本回合已打出消耗牌，下一张攻击+10伤，否则+4伤。", exhaustColor, "消耗", "消耗"),
 
-                W("warrior_vile_words", "污言", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 1, 1, 0, "Common", "敌方抽牌堆+1恐惧牌；抽1。", fearColor, "塞牌", "事件", "打出后抽"),
-                W("warrior_fear_howl", "塞啸", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 2, 3, 0, "Uncommon", "消耗。敌方+2恐惧牌+击退1。", fearColor, "塞牌", "事件", "消耗"),
-                W("warrior_scarecrow", "稻草人", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 8, 0, 0, "Common", "敌方+1恐惧牌；8格挡。", fearColor, "塞牌", "事件"),
-                W("warrior_contagion", "传染", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "消耗。移动1；敌方+3恐惧牌。", fearColor, "塞牌", "事件", "消耗"),
-                W("warrior_intimidate", "恫吓", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Uncommon", "敌方全体抽牌堆各+1恐惧牌。", fearColor, "塞牌", "草案", "事件"),
+                // §3.2 集中
+                W("warrior_build_up", "蓄势", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 2, 7, 0, 0, "Uncommon", "下一张攻击+7伤。", focusColor, "集中"),
+                W("warrior_double_focus", "双集", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Rare", "下一张攻击+2伤；再下一张攻击+2伤。", focusColor, "集中", "草案"),
+                W("warrior_combo_focus_slash", "连集斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 2, 1, 0, "Rare", "2伤×4。", focusColor, "集中"),
+                W("warrior_prepared_blade", "备刃", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合开始获得「下一张攻击+1伤」。", powerColor, "集中"),
+                W("warrior_hilt_storm", "剑柄风暴", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 2, 0, "Uncommon", "1伤击退1，两次。", focusColor, "集中"),
+                W("warrior_iaido", "见切", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 12, 1, 0, "Common", "12伤；集中效果在这张卡上×2。", focusColor, "集中"),
+
+                // §3.3 移动（含初始前进）
+                W("warrior_move_forward", "前进", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 0, 2, 2, 0, "Starter", "移动2。", moveColor, "移动"),
+                W("warrior_break_platform", "破障", HexCardType.Action, HexCardEffectType.DestroyBarrier, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "消耗。移动1；破坏邻格障碍。", moveColor, "移动"),
+                W("warrior_fortify", "筑垒", HexCardType.Action, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 1, 0, "Uncommon", "邻格空位生成临时障碍1回合。虚无。", moveColor, "移动", "移出游戏"),
+                W("warrior_block_path", "封路", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Direction, 2, 1, 1, 0, "Rare", "指定直线1生成只存在两回合、生命值为1的残骸。", skillColor, "移动"),
+                W("warrior_light_gear", "轻装", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "下两个回合首次移动不消耗费用。", powerColor, "移动"),
+                W("warrior_windstep_ready", "踏风预备", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "本回合每次位移获得2临时力量。", skillColor, "移动", "草案"),
+                W("warrior_flash_step_slash", "疾步斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 5, 1, 0, "Uncommon", "移动1后邻格5伤；本回合已触发位移时再5。", moveColor, "移动"),
+                W("warrior_charge", "猛冲", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 4, 1, 0, "Rare", "直线推进1；碰撞+4；本回合已触发位移时撞障碍再+8。", moveColor, "移动"),
+                W("warrior_quake", "震地", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Tile, 2, 4, 1, 1, "Rare", "移动1；邻格全体4伤；本回合已触发位移时+2/目标；随机1邻格障碍→残骸。", moveColor, "移动"),
+                W("warrior_swap_guard", "换位守", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Common", "移动1；本回合已触发位移时再+5格挡。", moveColor, "移动"),
+                W("warrior_cover_lean", "掩体靠", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 8, 0, 0, "Uncommon", "8格挡；本回合已触发位移且邻格有障碍时再+8格挡。", skillColor, "移动"),
+                W("warrior_clear_shield", "清障盾", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 6, 1, 0, "Common", "破坏邻格残骸；获得6格挡。", skillColor, "移动"),
+                W("warrior_skirmish", "游斗", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 2, 0, 0, "Rare", "每当你主动移动，获得2格挡。", powerColor, "移动"),
+
+                // §3.4 塞牌
+                W("warrior_vile_words", "污言", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 1, 1, 0, "Common", "敌方抽牌堆+1恐惧牌；抽1。", fearColor, "塞牌", "打出后抽"),
+                W("warrior_fear_howl", "塞啸", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 2, 3, 0, "Uncommon", "消耗。敌方+2恐惧牌+击退1。", fearColor, "塞牌", "消耗"),
+                W("warrior_contagion", "传染", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "消耗。移动1；敌方+3恐惧牌。", fearColor, "塞牌", "消耗"),
                 W("warrior_empty_city", "空城", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 2, 12, 0, 0, "Rare", "12格挡；敌方抽牌堆恐惧牌≥3时再抽1。", fearColor, "塞牌"),
-                W("warrior_warcry_fear", "战吼", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 7, 0, 0, "Uncommon", "7格挡；公开意图槽有恐惧标签时再移动2、5格挡。", fearColor, "塞牌", "收束"),
-                W("warrior_frighten_back", "惊退", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 0, 1, 1, 0, "Common", "移动1；敌方+1恐惧牌。", fearColor, "塞牌", "事件"),
-                W("warrior_nightmare_step", "噩梦步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Uncommon", "移动2；消耗意图槽1张恐惧标签牌。", fearColor, "塞牌", "草案", "收束"),
-                W("warrior_screaming_raid", "惊啸突袭", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 15, 2, 0, "Uncommon", "消耗敌方意图槽1张恐惧标签牌；移动2、15伤。", fearColor, "塞牌", "收束"),
-                W("warrior_fear_descends", "恐惧降临", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 1, 0, "Rare", "邻格击退1；意图槽有恐惧时击退3；撞地形+50伤。", fearColor, "塞牌", "Post-MVP", "收束"),
-                W("warrior_inner_demon", "心魔", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每当你向敌方抽牌添加恐惧牌时，你抽1。", powerColor, "塞牌"),
-                W("warrior_omen", "噩兆", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Rare", "每回合首次塞入恐惧牌，额外再塞1张。", powerColor, "塞牌", "草案"),
-                W("warrior_mind_seize", "夺心", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 2, 0, 0, "Uncommon", "每当敌方打出一张恐惧，你获得2力量。", powerColor, "塞牌"),
+                W("warrior_warcry_fear", "战吼", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 7, 0, 0, "Uncommon", "7格挡；意图槽有恐惧时再移动2、5格挡。", fearColor, "塞牌"),
+                W("warrior_frighten_back", "惊退", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 0, 1, 1, 0, "Common", "移动1；敌方+1恐惧牌。", fearColor, "塞牌"),
+                W("warrior_screaming_raid", "惊啸突袭", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 15, 2, 0, "Uncommon", "消耗意图槽1张恐惧牌；移动2、15伤。", fearColor, "塞牌"),
+                W("warrior_fear_descends", "恐惧降临", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 1, 0, "Rare", "邻格击退1；意图槽有恐惧时击退3；撞地形+50。", fearColor, "塞牌", "Post-MVP"),
+                W("warrior_omen", "噩兆", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 1, 0, 0, "Rare", "每回合首次塞入恐惧牌时，额外再塞1。", powerColor, "塞牌", "草案"),
                 W("warrior_mind_guard", "心防", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 3, 0, 0, "Uncommon", "每当敌方抽牌堆获得恐惧牌时，你获得3格挡。", powerColor, "塞牌", "草案"),
-
-                W("warrior_blood_sacrifice", "血祭", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Rare", "自身流血1；获得2力量。", bleedColor, "流血", "事件"),
-                W("warrior_bloodletting", "放血", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "自身流血2；抽2。", bleedColor, "流血", "事件"),
-                W("warrior_pain_strike", "痛击", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 11, 1, 0, "Common", "11伤+流血3。", bleedColor, "流血", "收束"),
-                W("warrior_life_for_life", "舍命", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 6, 1, 0, "Uncommon", "6伤+流血2；自身已有流血时抽1。", bleedColor, "流血", "收束"),
-                W("warrior_blood_surge", "血涌", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "获得等同于自身流血层数的力量。", bleedColor, "流血", "收束"),
-                W("warrior_martyrdom", "殉道", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 6, 1, 0, "Common", "6伤+自身流血层数额外伤害。", bleedColor, "流血", "收束"),
-                W("warrior_blood_forged", "鲜血铸就", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 6, 1, 0, "Uncommon", "命中无耗。6伤；本场每触发1次流血事件，本牌+3伤。", bleedColor, "流血", "命中无耗", "收束"),
-                W("warrior_blood_sword", "以血铸剑", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Self, 1, 99, 0, 0, "Rare", "本回合伤害×2；自身流血99。", bleedColor, "流血", "Post-MVP", "收束"),
-                W("warrior_brutality", "蛮力", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 6, 0, 0, "Rare", "6格挡+自身流血1；本场流血事件累计7次后获得1层吸血。", bleedColor, "流血", "收束"),
-                W("warrior_scab", "结痂", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 2, 16, 0, 0, "Common", "16格挡；自身流血2。", bleedColor, "流血", "事件"),
-                W("warrior_pain_draw", "苦痛汲取", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 2, 2, 0, 0, "Common", "清除自身全部流血；获得流血/2的力量。", bleedColor, "流血"),
-                W("warrior_endure", "忍耐", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "抽1；清除流血；下回合开始再获得等量流血。", bleedColor, "流血"),
-                W("warrior_red_step", "赤步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Common", "移动1；自身流血1；3格挡。", bleedColor, "流血", "事件"),
-                W("warrior_blood_pact", "血契", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 2, 2, 0, 0, "Rare", "本场每触发1次流血事件，你的下一张攻击+2伤。", powerColor, "流血"),
-                W("warrior_backflow", "回流", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每当自身获得流血时，回复1生命。", powerColor, "流血", "草案"),
-                W("warrior_death_harvest", "死亡收割", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 2, 2, 0, "Rare", "消耗。2伤害，恢复造成的伤害值的生命。", bleedColor, "流血", "过渡", "消耗"),
-
-                W("warrior_move_forward", "前进", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 0, 2, 2, 0, "Starter", "移动2。", actionColor, "位移", "Post-MVP", "事件"),
-                W("warrior_flash_step_slash", "疾步斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 5, 1, 0, "Uncommon", "移动1后邻格5伤；本链已触发位移时再打5。", actionColor, "位移", "Post-MVP", "收束"),
-                W("warrior_break_platform", "破障", HexCardType.Action, HexCardEffectType.DestroyBarrier, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "移动1；破坏邻格障碍。", actionColor, "位移", "Post-MVP", "事件"),
-                W("warrior_charge", "猛冲", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 4, 1, 0, "Rare", "直线推进1；碰撞+4；本链已触发位移时撞高台追加8。", actionColor, "位移", "Post-MVP", "收束"),
-                W("warrior_quake", "震地", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Tile, 2, 4, 1, 1, "Rare", "移动1；邻格全体4伤；本回合已触发位移时+2伤/目标；随机1邻格高台变废墟木箱。", actionColor, "位移", "Post-MVP", "收束"),
-
-                W("warrior_close_step", "贴身步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 3, 0, "Starter", "移动1，或移动到敌人的任意邻格。", actionColor, "位置控制", "草案"),
-                W("warrior_windstep_ready", "踏风预备", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "位移时，本回合获得2临时力量。", skillColor, "过渡", "特殊协同", "草案"),
-                W("warrior_opening_stagger", "起手震慑", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击牌获得击退1。", powerColor, "过渡", "规则常驻", "草案"),
-                W("warrior_opening_reach", "先手延展", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合第一张攻击牌攻击距离+1。", powerColor, "过渡", "规则常驻", "草案"),
-                W("warrior_leap_step", "跃迁步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "可跨越1个敌人或残骸后落地，移动2。", actionColor, "过渡", "纯粹移动", "草案"),
-                W("warrior_blast_barrel", "爆破桶", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 8, 1, 0, "Uncommon", "给敌方单位放置炸药桶状态（受击时对周围造成8范围伤）。", skillColor, "过渡", "地形互动", "草案"),
-                W("warrior_hook", "钩锁", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 4, 2, 0, "Common", "4伤；将目标拉拽1至邻格。", attackColor, "过渡", "敌人位置控制", "草案"),
-                W("warrior_break_slash", "破障斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 8, 1, 0, "Uncommon", "8伤；破坏邻格残骸。", attackColor, "过渡", "地形互动", "草案"),
-                W("warrior_light_gear", "轻装", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每回合首次移动不消耗额外费用。", powerColor, "过渡", "规则常驻", "草案"),
-                W("warrior_fortify", "筑垒", HexCardType.Action, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 1, 0, "Uncommon", "邻格空位生成临时障碍，持续1回合。", actionColor, "过渡", "地形互动", "草案"),
-                W("warrior_block_path", "封路", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Direction, 2, 1, 1, 0, "Rare", "指定直线1生成障碍。", skillColor, "过渡", "地形互动", "草案"),
-                W("warrior_rolling_siege", "滚石攻城", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.Direction, 2, 4, 1, 0, "Rare", "破坏邻格残骸，直线推进滚石：沿途每格4伤。", attackColor, "过渡", "地形互动", "消耗", "草案"),
-                W("warrior_pierce_step", "穿垒步", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 2, 2, 0, "Common", "穿越一个残骸，移动到残骸对侧。", actionColor, "过渡", "地形互动", "草案"),
-                W("warrior_backwall_smash", "背障重击", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 34, 1, 0, "Rare", "身后是障碍时造成34伤，否则10伤。", attackColor, "过渡", "短期爆发", "消耗", "草案"),
-                W("warrior_dismantle_slash", "拆垒重斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 2, 14, 1, 0, "Uncommon", "目标附近有残骸时造成14伤并破坏残骸，否则6伤。", attackColor, "过渡", "地形互动", "草案"),
-                W("warrior_clear_path", "开路", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 1, 0, "Common", "移除邻格障碍/残骸；移动1。", actionColor, "过渡", "地形互动", "草案"),
-
-                W("warrior_intent_intercept", "意图截流", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 2, 0, "Rare", "消耗敌人意图队列1张卡牌（进入你的消耗堆）；敌方抽牌堆+2消耗牌。", fearColor, "塞牌", "消耗", "草案"),
-                W("warrior_fear_press", "惧压斩", HexCardType.Attack, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 1, 9, 1, 0, "Common", "消耗敌方意图槽1张恐惧标签牌；9伤。", fearColor, "塞牌", "收束"),
-                W("warrior_evasion_plan", "规避预案", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 2, 0, "Common", "移动1；4格挡；意图槽有恐惧标签时再移动1。", fearColor, "塞牌", "纯粹移动"),
-                W("warrior_fear_echo", "余惧回响", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "每当敌方移除或弃置恐惧标签牌时，你抽1（每回合最多1次）。", powerColor, "塞牌", "规则常驻"),
+                W("warrior_intent_intercept", "意图截流", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 1, 2, 0, "Rare", "消耗。消耗敌人意图1张；敌方抽牌堆+2消耗掉的牌。", fearColor, "塞牌", "消耗", "草案"),
+                W("warrior_evasion_plan", "规避预案", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 1, 1, 2, 0, "Common", "移动1；4格挡；意图槽有恐惧时再移动1。", fearColor, "塞牌"),
             };
         }
 
@@ -1796,6 +1835,8 @@ namespace HexDemo
                     string.Equals(card.rarity, "Token", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(card.rarity, "Temporary", StringComparison.OrdinalIgnoreCase))
                     continue;
+                if (HasCardTag(card, "Post-MVP"))
+                    continue;
 
                 candidates.Add(card);
             }
@@ -1811,6 +1852,20 @@ namespace HexDemo
             }
 
             return candidates;
+        }
+
+        private static bool HasCardTag(HexCardDefinition card, string tag)
+        {
+            if (card?.tags == null || string.IsNullOrWhiteSpace(tag))
+                return false;
+
+            for (int i = 0; i < card.tags.Length; i++)
+            {
+                if (string.Equals(card.tags[i], tag, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<IReadOnlyList<HexCardDefinition>> EnumerateSearchPools()

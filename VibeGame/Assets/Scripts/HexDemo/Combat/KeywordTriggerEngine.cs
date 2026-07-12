@@ -18,9 +18,11 @@ namespace HexDemo
             if (card.HasRuntimeFlag(flagId))
                 return true;
 
-            if (string.Equals(flagId, HexCardFlagIds.Exhaust, StringComparison.OrdinalIgnoreCase) &&
-                (card.exhaustWhenPlayed || HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Exhaust)))
-                return true;
+            if (string.Equals(flagId, HexCardFlagIds.Exhaust, StringComparison.OrdinalIgnoreCase))
+            {
+                return card.exhaustWhenPlayed ||
+                       HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Exhaust);
+            }
 
             if (string.Equals(flagId, HexCardFlagIds.Void, StringComparison.OrdinalIgnoreCase) &&
                 HexCardLibrary.HasKeyword(card.definition, HexCardKeywordType.Void))

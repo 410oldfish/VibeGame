@@ -54,7 +54,7 @@ MonoBehaviour:
     - warrior_defend
     - warrior_defend
     - warrior_defend
-    - warrior_quick_step
+    - warrior_move_forward
   enemies:
   - enemyDefinitionId: goblin
     displayNameOverride: 

@@ -192,15 +192,25 @@ namespace HexDemo
             State.warriorFearEventThisTurn = false;
             State.warriorBleedEventThisTurn = false;
             State.warriorMoveEventThisTurn = false;
+            State.warriorExhaustEventThisTurn = false;
+            State.warriorFocusEventThisTurn = false;
             State.warriorBurnFinisherUsedThisTurn = false;
             State.warriorFearFinisherUsedThisTurn = false;
             State.warriorBleedFinisherUsedThisTurn = false;
             State.warriorMoveFinisherUsedThisTurn = false;
+            State.warriorExhaustFinisherUsedThisTurn = false;
+            State.warriorFocusFinisherUsedThisTurn = false;
             State.warriorBleedEventsThisBattle = 0;
             State.warriorBleedEventsThisTurn = 0;
             State.warriorStrengthPerTurn = 0;
             State.warriorBloodPactActive = false;
             State.warriorNextAttackDamageBonus = 0;
+            State.warriorNextAttackDamageBonusQueued = 0;
+            State.warriorFocusEffectDoubleThisCard = false;
+            State.warriorPendingEnergyNextTurn = 0;
+            State.warriorPreparedBlade = false;
+            State.warriorScorchedEarthActive = false;
+            State.warriorSkirmishArmorOnMove = false;
             State.warriorBloodForgedBonus = 0;
             State.warriorDelayedBleed = 0;
             State.warriorDamageMultiplierThisTurn = 0;
@@ -292,6 +302,11 @@ namespace HexDemo
 
             State.energy = State.maxEnergy;
             State.energy += Mathf.Max(0, State.extraEnergyPerTurn);
+            if (State.warriorPendingEnergyNextTurn > 0)
+            {
+                State.energy += State.warriorPendingEnergyNextTurn;
+                State.warriorPendingEnergyNextTurn = 0;
+            }
             if (State.fatigue > 0)
             {
                 State.energy = Mathf.Max(0, State.energy - State.fatigue);
@@ -314,10 +329,14 @@ namespace HexDemo
             State.warriorFearEventThisTurn = false;
             State.warriorBleedEventThisTurn = false;
             State.warriorMoveEventThisTurn = false;
+            State.warriorExhaustEventThisTurn = false;
+            State.warriorFocusEventThisTurn = false;
             State.warriorBurnFinisherUsedThisTurn = false;
             State.warriorFearFinisherUsedThisTurn = false;
             State.warriorBleedFinisherUsedThisTurn = false;
             State.warriorMoveFinisherUsedThisTurn = false;
+            State.warriorExhaustFinisherUsedThisTurn = false;
+            State.warriorFocusFinisherUsedThisTurn = false;
             State.warriorBleedEventsThisTurn = 0;
             State.warriorExtraFearUsedThisTurn = false;
             State.warriorWindstepUsedThisTurn = false;
@@ -325,6 +344,7 @@ namespace HexDemo
             State.warriorLightGearUsedThisTurn = false;
             State.warriorFearEchoUsedThisTurn = false;
             State.warriorDamageMultiplierThisTurn = 0;
+            State.warriorFocusEffectDoubleThisCard = false;
             State.paralysisActiveThisTurn = State.paralysis;
             State.paralysis = 0;
             State.tauntActiveThisTurn = State.taunt;
