@@ -871,10 +871,10 @@ namespace HexDemo
         private static readonly HexCardDefinition GoblinApproach = new()
         {
             id = "enemy_goblin_approach",
-            displayName = "接近",
+            displayName = "移动",
             cardType = HexCardType.Action,
             profession = HexCardProfession.Monster,
-            effectType = HexCardEffectType.MoveToward,
+            effectType = HexCardEffectType.Move,
             targetType = HexCardTargetType.EnemyUnit,
             energyCost = 0,
             amount = 1,
@@ -883,7 +883,7 @@ namespace HexDemo
             effectRadius = 0,
             priority = 2,
             rarity = "Enemy",
-            description = "朝敌方单位移动1距离。",
+            description = "按理想攻击距离相对目标移动1格。",
             color = new Color(0.48f, 0.62f, 0.28f, 1f),
         };
 
@@ -916,16 +916,16 @@ namespace HexDemo
             99, 0, 0, 0, "Token", "恐惧。抽到时无效果，进入弃牌堆。", new Color(0.25f, 0.2f, 0.34f, 1f), true, new[] { "恐惧" });
 
         private static readonly HexCardDefinition GoblinRoll = Card(
-            "enemy_goblin_roll", "翻滚", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.MoveToward, HexCardTargetType.EnemyUnit,
-            0, 1, 1, 0, "Enemy", "朝敌方单位移动1距离，获得5格挡。", new Color(0.35f, 0.62f, 0.42f, 1f));
+            "enemy_goblin_roll", "翻滚", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit,
+            0, 1, 1, 0, "Enemy", "按理想攻击距离相对目标移动1格，获得5格挡。", new Color(0.35f, 0.62f, 0.42f, 1f));
 
         private static readonly HexCardDefinition SpearGoblinThrow = Card(
             "enemy_spear_goblin_throw", "投矛", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit,
             0, 4, 3, 0, "Enemy", "对距离2-3的敌方单位造成4点伤害。", new Color(0.77f, 0.42f, 0.24f, 1f));
 
         private static readonly HexCardDefinition SpearGoblinRetreat = Card(
-            "enemy_spear_goblin_retreat", "后撤", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.MoveAway, HexCardTargetType.EnemyUnit,
-            0, 1, 0, 0, "Enemy", "远离最近敌方单位移动1格。", new Color(0.42f, 0.6f, 0.34f, 1f));
+            "enemy_spear_goblin_retreat", "移动", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit,
+            0, 1, 0, 0, "Enemy", "按理想攻击距离相对目标移动1格。", new Color(0.42f, 0.6f, 0.34f, 1f));
 
         private static readonly HexCardDefinition GoblinCaptainNet = Card(
             "enemy_goblin_captain_net", "网索", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit,
@@ -1136,7 +1136,7 @@ namespace HexDemo
             return new List<HexCardDefinition>
             {
                 SpearGoblinThrow, SpearGoblinThrow, SpearGoblinThrow, SpearGoblinThrow,
-                SpearGoblinRetreat, SpearGoblinRetreat, SpearGoblinRetreat,
+                GoblinApproach, GoblinApproach, GoblinApproach,
                 GoblinApproach, GoblinApproach,
             };
         }
@@ -1590,14 +1590,27 @@ namespace HexDemo
             List<HexCardDefinition> deck,
             params HexEnemyIntentSlotKind[] slots)
         {
+            int minRange = Mathf.Max(1, attackMinRange);
+            int maxRange = Mathf.Max(minRange, attackMaxRange);
+            if (deck != null)
+            {
+                for (int i = 0; i < deck.Count; i++)
+                {
+                    var card = deck[i];
+                    if (card == null || card.cardType != HexCardType.Attack)
+                        continue;
+                    maxRange = Mathf.Max(maxRange, Mathf.Max(1, card.castRange));
+                }
+            }
+
             return new HexEnemyDefinition
             {
                 id = id,
                 displayName = displayName,
                 encounterType = encounterType,
                 intentPattern = pattern,
-                attackMinRange = Mathf.Max(1, attackMinRange),
-                attackMaxRange = Mathf.Max(attackMinRange, attackMaxRange),
+                attackMinRange = minRange,
+                attackMaxRange = maxRange,
                 emptyDrawPileStrengthGain = Mathf.Max(0, emptyDrawPileStrengthGain),
                 bottomCard = bottomCard,
                 deckDefinitions = deck ?? new List<HexCardDefinition>(),
