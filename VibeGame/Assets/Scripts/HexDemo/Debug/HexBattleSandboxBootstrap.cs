@@ -94,8 +94,16 @@ namespace HexDemo
                 if (!grid.TryGetTile(coord, out var tile) || tile == null)
                     continue;
 
-                tile.baseTerrain = item.baseTerrain;
-                tile.SetStructure(item.structureType, item.structureHp);
+                HexTerrainZoneType zone = item.zone;
+                if (zone == HexTerrainZoneType.Normal && item.baseTerrain == HexTerrainBaseType.Pit)
+                    zone = HexTerrainZoneType.Pit;
+                tile.zone = zone;
+
+                if (!string.IsNullOrWhiteSpace(item.propId))
+                    tile.SetProp(item.propId, item.structureHp > 0 ? item.structureHp : (int?)null);
+                else if (item.structureType != HexTerrainStructureType.None)
+                    tile.SetStructure(item.structureType, item.structureHp);
+
                 tile.SetPickup(item.pickupType, item.pickupAmount);
             }
         }

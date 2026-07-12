@@ -11,8 +11,11 @@ namespace HexDemo
         public sealed class TerrainOverride
         {
             public Vector2Int coord;
+            public HexTerrainZoneType zone = HexTerrainZoneType.Normal;
+            [Tooltip("Obsolete alias field. Prefer zone.")]
             public HexTerrainBaseType baseTerrain = HexTerrainBaseType.Ground;
             public HexTerrainStructureType structureType = HexTerrainStructureType.None;
+            public string propId = string.Empty;
             public int structureHp = 0;
             public HexTerrainPickupType pickupType = HexTerrainPickupType.None;
             public int pickupAmount = 0;

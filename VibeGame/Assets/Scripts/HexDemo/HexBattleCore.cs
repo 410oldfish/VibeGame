@@ -66,7 +66,9 @@ namespace HexDemo
         MoveAway = 4,
         AddFear = 5,
         PlaceRuin = 6,
-        DestroyHighGround = 7,
+        DestroyBarrier = 7,
+        /// <summary>Obsolete alias for DestroyBarrier.</summary>
+        DestroyHighGround = DestroyBarrier,
         None = 8,
     }
 
@@ -92,17 +94,27 @@ namespace HexDemo
         Free = 2,
     }
 
+    public enum HexTerrainZoneType
+    {
+        Normal = 0,
+        Pit = 1,
+    }
+
+    /// <summary>Obsolete. Prefer HexTerrainZoneType. Ground==Normal.</summary>
     public enum HexTerrainBaseType
     {
         Ground = 0,
         Pit = 1,
+        Normal = 0,
     }
 
     public enum HexTerrainStructureType
     {
         None = 0,
-        HighGround = 1,
+        Barrier = 1,
         Ruin = 2,
+        /// <summary>Obsolete alias for Barrier.</summary>
+        HighGround = Barrier,
     }
 
     public enum HexTerrainPickupType
@@ -884,7 +896,7 @@ namespace HexDemo
             1, 1, 1, 0, "Common", "移动1，获得4格挡。", new Color(0.42f, 0.66f, 0.34f, 1f));
 
         private static readonly HexCardDefinition WarriorBreakPlatform = Card(
-            "warrior_break_platform", "破台", HexCardType.Action, HexCardProfession.Warrior, HexCardEffectType.DestroyHighGround, HexCardTargetType.Tile,
+            "warrior_break_platform", "破障", HexCardType.Action, HexCardProfession.Warrior, HexCardEffectType.DestroyBarrier, HexCardTargetType.Tile,
             1, 1, 1, 0, "Uncommon", "移动1；破坏邻格高台。", new Color(0.55f, 0.48f, 0.28f, 1f));
 
         private static readonly HexCardDefinition WarriorBlazingStep = Card(
@@ -1481,7 +1493,7 @@ namespace HexDemo
 
                 W("warrior_move_forward", "前进", HexCardType.Action, HexCardEffectType.Move, HexCardTargetType.Tile, 0, 2, 2, 0, "Starter", "移动2。", actionColor, "位移", "Post-MVP", "事件"),
                 W("warrior_flash_step_slash", "疾步斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 5, 1, 0, "Uncommon", "移动1后邻格5伤；本链已触发位移时再打5。", actionColor, "位移", "Post-MVP", "收束"),
-                W("warrior_break_platform", "破台", HexCardType.Action, HexCardEffectType.DestroyHighGround, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "移动1；破坏邻格高台。", actionColor, "位移", "Post-MVP", "事件"),
+                W("warrior_break_platform", "破障", HexCardType.Action, HexCardEffectType.DestroyBarrier, HexCardTargetType.Tile, 1, 1, 1, 0, "Uncommon", "移动1；破坏邻格障碍。", actionColor, "位移", "Post-MVP", "事件"),
                 W("warrior_charge", "猛冲", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 4, 1, 0, "Rare", "直线推进1；碰撞+4；本链已触发位移时撞高台追加8。", actionColor, "位移", "Post-MVP", "收束"),
                 W("warrior_quake", "震地", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Tile, 2, 4, 1, 1, "Rare", "移动1；邻格全体4伤；本回合已触发位移时+2伤/目标；随机1邻格高台变废墟木箱。", actionColor, "位移", "Post-MVP", "收束"),
 

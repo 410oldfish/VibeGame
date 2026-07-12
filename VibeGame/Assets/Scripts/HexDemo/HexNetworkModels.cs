@@ -138,9 +138,12 @@ namespace HexDemo
     {
         public int q;
         public int r;
+        public HexTerrainZoneType zone;
         public HexTerrainBaseType baseTerrain;
         public HexTerrainStructureType structureType;
+        public string propId;
         public int structureHp;
+        public int structureMaxHp;
         public HexTerrainPickupType pickupType;
         public int pickupAmount;
     }

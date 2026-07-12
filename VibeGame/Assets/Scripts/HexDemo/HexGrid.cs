@@ -63,7 +63,7 @@ namespace HexDemo
         public GameObject tilePrefab;
         [Header("Tile Structure Visual")]
         public GameObject ruinVisualPrefab;
-        public GameObject highGroundVisualPrefab;
+        public GameObject barrierVisualPrefab;
         [Range(1f, 1.3f)]
         public float tileFillScale = 1.08f;
 
@@ -159,6 +159,7 @@ namespace HexDemo
             };
             var controller = new TileController(this, model, tileView);
             tile.InitializeMvc(model, tileView, controller);
+            controller.BindTile(tile);
             tile.CacheVisuals();
             InitializeFeatureTerrain(tile);
 
@@ -178,9 +179,9 @@ namespace HexDemo
 
             float featureRoll = Mathf.PerlinNoise(tile.coord.q * 0.91f + 21.7f, tile.coord.r * 0.91f + 14.2f);
             if (featureRoll > 1f - highGroundChance)
-                tile.SetStructure(HexTerrainStructureType.HighGround);
+                tile.SetProp(HexPropLibrary.DefaultBarrierPropId);
             else if (featureRoll < ruinChance)
-                tile.SetStructure(HexTerrainStructureType.Ruin, 4);
+                tile.SetProp(HexPropLibrary.DefaultRuinPropId, 4);
         }
 
         private float CreateTileVisual(Transform parent, HexAxialCoord coord, float terrainLift)
@@ -472,7 +473,7 @@ namespace HexDemo
         public HexAxialCoord coord;
         public HexGrid grid;
         public float topHeight;
-        [SerializeField] private HexTerrainBaseType _baseTerrain = HexTerrainBaseType.Ground;
+        [SerializeField] private HexTerrainZoneType _zone = HexTerrainZoneType.Normal;
         [SerializeField] private HexTerrainStructureType _structureType = HexTerrainStructureType.None;
         [SerializeField] private int _structureHp;
         [SerializeField] private HexTerrainPickupType _pickupType = HexTerrainPickupType.None;
@@ -508,35 +509,50 @@ namespace HexDemo
         private static readonly Color PathTileTint = new(0.14f, 0.5f, 1f, 0.78f);
         private static readonly Color PathTargetTint = new(1f, 0.9f, 0.18f, 0.92f);
         private static readonly Color PathInvalidTint = new(1f, 0.18f, 0.18f, 0.9f);
-        private static readonly Color HighGroundTint = new(0.36f, 0.36f, 0.42f, 1f);
+        private static readonly Color BarrierTint = new(0.36f, 0.36f, 0.42f, 1f);
         private static readonly Color RuinTint = new(0.54f, 0.42f, 0.28f, 1f);
         private static readonly Color PickupTint = new(0.95f, 0.78f, 0.22f, 1f);
+        private static readonly Color PitTint = new(0.12f, 0.14f, 0.22f, 1f);
 
         public IReadOnlyList<HexTileEffectState> Effects => _effects;
-        public HexTerrainBaseType baseTerrain
+
+        public HexTerrainZoneType zone
         {
-            get => _model != null ? _model.baseTerrain : _baseTerrain;
+            get => _model != null ? _model.zone : _zone;
             set
             {
-                _baseTerrain = value;
-                if (_model != null)
-                    _model.baseTerrain = value;
+                _zone = value;
+                if (_tileController != null)
+                    _tileController.SetZone(value);
+                else if (_model != null)
+                    _model.zone = value;
                 ApplyVisuals();
             }
         }
 
+        /// <summary>Obsolete alias for zone. Ground maps to Normal.</summary>
+        public HexTerrainBaseType baseTerrain
+        {
+            get => zone == HexTerrainZoneType.Pit ? HexTerrainBaseType.Pit : HexTerrainBaseType.Ground;
+            set => zone = value == HexTerrainBaseType.Pit ? HexTerrainZoneType.Pit : HexTerrainZoneType.Normal;
+        }
+
         public HexTerrainStructureType structureType => _model != null ? _model.structureType : _structureType;
         public int structureHp => _model != null ? _model.structureHp : _structureHp;
+        public int structureMaxHp => _model != null ? _model.structureMaxHp : _structureHp;
+        public string propId => _model != null ? _model.propId : null;
         public HexTerrainPickupType pickupType => _model != null ? _model.pickupType : _pickupType;
         public int pickupAmount => _model != null ? _model.pickupAmount : _pickupAmount;
-        public bool BlocksMovement => _model != null ? _model.BlocksMovement : (baseTerrain == HexTerrainBaseType.Pit || structureType != HexTerrainStructureType.None);
-        public bool BlocksLineOfSight => _model != null ? _model.BlocksLineOfSight : structureType == HexTerrainStructureType.HighGround;
+        public bool BlocksMovement => _model != null ? _model.BlocksMovement : (zone == HexTerrainZoneType.Pit || structureType != HexTerrainStructureType.None);
+        public bool BlocksLineOfSight => _model != null ? _model.BlocksLineOfSight : structureType == HexTerrainStructureType.Barrier;
         public bool HasRuin => _model != null ? _model.HasRuin : (structureType == HexTerrainStructureType.Ruin && structureHp > 0);
+        public bool HasBarrier => _model != null ? _model.HasBarrier : structureType == HexTerrainStructureType.Barrier;
         public HexAxialCoord TargetCoord => coord;
         public bool IsAttackTargetValid => HasRuin;
         public HexAttackTargetKind AttackTargetKind => HexAttackTargetKind.Structure;
 
         public TileController Controller => _tileController;
+        public TileModel Model => _model;
 
         public void InitializeMvc(TileModel model, TileView view, TileController controller)
         {
@@ -547,8 +563,15 @@ namespace HexDemo
             {
                 _model.effects.Clear();
                 _model.effects.AddRange(_effects);
-                _model.baseTerrain = _baseTerrain;
+                _model.zone = _zone;
             }
+        }
+
+        public void SetProp(string id, int? hpOverride = null)
+        {
+            if (_tileController != null)
+                _tileController.SetProp(id, hpOverride);
+            ApplyVisuals();
         }
 
         public void SetStructure(HexTerrainStructureType type, int hp = 0)
@@ -580,15 +603,8 @@ namespace HexDemo
             if (_tileController != null)
             {
                 bool handled = _tileController.DamageStructure(amount, out destroyed);
-                if (!handled || !destroyed)
-                {
-                    ApplyVisuals();
-                    return handled;
-                }
-
-                RollDefaultRuinPickup();
                 ApplyVisuals();
-                return true;
+                return handled;
             }
 
             destroyed = false;
@@ -637,7 +653,7 @@ namespace HexDemo
             return type;
         }
 
-        private void RollDefaultRuinPickup()
+        public void RollDefaultRuinPickup()
         {
             int roll = Random.Range(0, 3);
             switch (roll)
@@ -841,10 +857,12 @@ namespace HexDemo
             {
                 var state = _materialStates[i];
                 Color color = state.baseColor;
-                if (structureType == HexTerrainStructureType.HighGround)
-                    color = Color.Lerp(color, HighGroundTint, 0.46f);
+                if (structureType == HexTerrainStructureType.Barrier)
+                    color = Color.Lerp(color, BarrierTint, 0.46f);
                 else if (structureType == HexTerrainStructureType.Ruin)
                     color = Color.Lerp(color, RuinTint, 0.42f);
+                else if (zone == HexTerrainZoneType.Pit)
+                    color = Color.Lerp(color, PitTint, 0.55f);
                 else if (pickupType != HexTerrainPickupType.None)
                     color = Color.Lerp(color, PickupTint, 0.34f);
                 if (tileTintStrength > 0f)

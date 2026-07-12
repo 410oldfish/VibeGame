@@ -140,6 +140,10 @@ namespace HexDemo
         private RectTransform _enemyHandPopup;
         private TextMeshProUGUI _enemyHandTitle;
         private RectTransform _enemyHandContent;
+        private RectTransform _terrainDetailOverlay;
+        private RectTransform _terrainDetailPopup;
+        private TextMeshProUGUI _terrainDetailTitle;
+        private TextMeshProUGUI _terrainDetailBody;
         private RectTransform _playLogModal;
         private RectTransform _playLogContent;
         private Canvas _canvas;
@@ -329,6 +333,8 @@ namespace HexDemo
                     _exhaustPileLabel = exhaust.Find("ExhaustLabel")?.GetComponent<TextMeshProUGUI>();
                 }
             }
+
+            EnsureTerrainDetailPopup(canvasRoot);
         }
 
         private static GameObject LoadBattlePrefab(string assetName)
@@ -579,13 +585,6 @@ namespace HexDemo
             Object.DontDestroyOnLoad(eventSystemGO);
         }
 
-        public bool IsBlockingWorldClick()
-        {
-            return (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf) ||
-                   (_pileModal != null && _pileModal.gameObject.activeSelf) ||
-                   (_playLogModal != null && _playLogModal.gameObject.activeSelf);
-        }
-
         public bool IsEnemyIntentPopupOpen()
         {
             return _enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf;
@@ -625,6 +624,45 @@ namespace HexDemo
             }
         }
 
+        public bool IsBlockingWorldClick()
+        {
+            return (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf) ||
+                   (_terrainDetailOverlay != null && _terrainDetailOverlay.gameObject.activeSelf) ||
+                   (_pileModal != null && _pileModal.gameObject.activeSelf) ||
+                   (_playLogModal != null && _playLogModal.gameObject.activeSelf);
+        }
+
+        public void OpenTerrainDetailPopup(HexTile tile, Vector2 screenPosition)
+        {
+            if (_canvas == null || tile == null)
+                return;
+
+            EnsureTerrainDetailPopup(_canvas.transform);
+            if (_terrainDetailOverlay == null || _terrainDetailPopup == null)
+                return;
+
+            _terrainDetailOverlay.gameObject.SetActive(true);
+            _terrainDetailTitle.text = BuildTerrainDetailTitle(tile);
+            _terrainDetailBody.text = BuildTerrainDetailBody(tile);
+
+            var canvasRect = _canvas.transform as RectTransform;
+            if (canvasRect != null &&
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screenPosition, null, out var localPoint))
+            {
+                Vector2 size = _terrainDetailPopup.sizeDelta;
+                Rect rect = canvasRect.rect;
+                localPoint.x = Mathf.Clamp(localPoint.x + 18f, rect.xMin + 16f, rect.xMax - size.x - 16f);
+                localPoint.y = Mathf.Clamp(localPoint.y - 18f, rect.yMin + size.y + 16f, rect.yMax - 16f);
+                _terrainDetailPopup.anchoredPosition = localPoint;
+            }
+        }
+
+        public void CloseTerrainDetailPopup()
+        {
+            if (_terrainDetailOverlay != null)
+                _terrainDetailOverlay.gameObject.SetActive(false);
+        }
+
         public void CloseEnemyHandPopup()
         {
             if (_enemyHandOverlay != null)
@@ -633,6 +671,12 @@ namespace HexDemo
 
         public void CloseTopModal()
         {
+            if (_terrainDetailOverlay != null && _terrainDetailOverlay.gameObject.activeSelf)
+            {
+                CloseTerrainDetailPopup();
+                return;
+            }
+
             if (_enemyHandOverlay != null && _enemyHandOverlay.gameObject.activeSelf)
             {
                 CloseEnemyHandPopup();
@@ -803,6 +847,123 @@ namespace HexDemo
             layout.childControlWidth = false;
             layout.childForceExpandHeight = false;
             layout.childForceExpandWidth = false;
+        }
+
+        private void EnsureTerrainDetailPopup(Transform parent)
+        {
+            if (_terrainDetailOverlay != null || parent == null)
+                return;
+
+            _terrainDetailOverlay = new GameObject("TerrainDetailOverlay", typeof(RectTransform), typeof(Image), typeof(Button)).GetComponent<RectTransform>();
+            _terrainDetailOverlay.SetParent(parent, false);
+            _terrainDetailOverlay.anchorMin = Vector2.zero;
+            _terrainDetailOverlay.anchorMax = Vector2.one;
+            _terrainDetailOverlay.offsetMin = Vector2.zero;
+            _terrainDetailOverlay.offsetMax = Vector2.zero;
+            _terrainDetailOverlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.01f);
+            _terrainDetailOverlay.GetComponent<Button>().onClick.AddListener(CloseTerrainDetailPopup);
+            _terrainDetailOverlay.gameObject.SetActive(false);
+
+            _terrainDetailPopup = CreatePanel(_terrainDetailOverlay, "TerrainDetailPopup", Vector2.zero, new Vector2(420f, 320f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 1f));
+            _terrainDetailPopup.gameObject.AddComponent<Button>();
+            _terrainDetailTitle = CreateTMP(_terrainDetailPopup.transform, "Title", new Vector2(18f, -14f), new Vector2(380f, 34f), 24, FontStyles.Bold);
+            _terrainDetailBody = CreateTMP(_terrainDetailPopup.transform, "Body", new Vector2(18f, -56f), new Vector2(380f, 240f), 18, FontStyles.Normal);
+            _terrainDetailBody.alignment = TextAlignmentOptions.TopLeft;
+            _terrainDetailBody.textWrappingMode = TextWrappingModes.Normal;
+        }
+
+        private static string BuildTerrainDetailTitle(HexTile tile)
+        {
+            if (tile == null)
+                return "地形";
+
+            var def = HexPropLibrary.Get(tile.propId);
+            if (def != null && !string.IsNullOrWhiteSpace(def.displayName))
+                return def.displayName;
+
+            if (tile.HasBarrier)
+                return "障碍";
+            if (tile.HasRuin)
+                return "残骸";
+            if (tile.zone == HexTerrainZoneType.Pit)
+                return "深坑";
+            return "地形";
+        }
+
+        private static string BuildTerrainDetailBody(HexTile tile)
+        {
+            if (tile == null)
+                return string.Empty;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"坐标 ({tile.coord.q},{tile.coord.r})");
+            sb.AppendLine($"Zone：{DescribeZone(tile.zone)}");
+
+            if (tile.HasBarrier)
+                sb.AppendLine("构筑物：障碍 Barrier");
+            else if (tile.HasRuin)
+                sb.AppendLine("构筑物：残骸 Ruin");
+            else
+                sb.AppendLine("构筑物：无");
+
+            sb.AppendLine($"通行：{(tile.BlocksMovement ? "不可进入" : "可进入")}");
+            sb.AppendLine($"视线：{(tile.BlocksLineOfSight ? "阻挡 LOS" : "不挡 LOS")}");
+
+            if (tile.HasRuin)
+                sb.AppendLine($"HP：{tile.structureHp}/{Mathf.Max(tile.structureMaxHp, tile.structureHp)}");
+
+            var def = HexPropLibrary.Get(tile.propId);
+            if (def != null)
+            {
+                sb.AppendLine($"propId：{def.propId}");
+                sb.AppendLine($"破坏：{DescribeDestroyBy(def.destroyBy)}");
+                if (!string.IsNullOrWhiteSpace(def.description))
+                    sb.AppendLine(def.description);
+
+                if (def.onRemoveEffects != null && def.onRemoveEffects.Count > 0)
+                {
+                    sb.AppendLine("移除效果：");
+                    for (int i = 0; i < def.onRemoveEffects.Count; i++)
+                    {
+                        var effect = def.onRemoveEffects[i];
+                        if (effect == null)
+                            continue;
+                        sb.AppendLine($"- {effect.type}: {effect.summary}");
+                    }
+                }
+
+                if (def.fuseTurns.HasValue)
+                    sb.AppendLine($"引信：{def.fuseTurns.Value} 回合（armed={(tile.Model != null && tile.Model.fuseArmed)})");
+                if (def.adjacentAura != null && !string.IsNullOrWhiteSpace(def.adjacentAura.summary))
+                    sb.AppendLine($"光环：{def.adjacentAura.summary}");
+                if (def.postBattleReward)
+                    sb.AppendLine("战后奖励：是");
+            }
+            else if (tile.zone == HexTerrainZoneType.Pit)
+            {
+                sb.AppendLine("深坑为地面属性 Zone，不是构筑物。击退落入可造成高额伤害（Content）。");
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        private static string DescribeZone(HexTerrainZoneType zone)
+        {
+            return zone switch
+            {
+                HexTerrainZoneType.Pit => "深坑 Pit",
+                _ => "普通 Normal",
+            };
+        }
+
+        private static string DescribeDestroyBy(HexPropDestroyBy destroyBy)
+        {
+            return destroyBy switch
+            {
+                HexPropDestroyBy.NormalAttack => "普通攻击可破坏",
+                HexPropDestroyBy.Both => "普通攻击或特殊行动",
+                _ => "仅特殊破障",
+            };
         }
 
         private void BuildPlayLogModal(Transform parent)
