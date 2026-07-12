@@ -125,6 +125,11 @@ namespace HexDemo
                 HexPropDestroyBy.NormalAttack,
                 null, null, false,
                 Overlay("holy_ground", "圣水地 3 回合", 3)));
+
+            Register(MakeRuin("consumable_iron_ball", "铁球", 999, "Consumable",
+                "可攻击工程装置。受到攻击后沿受击方向滚动至多5格，碰撞造成10点伤害。",
+                HexPropDestroyBy.NormalAttack,
+                null, null, false));
         }
 
         private static void Register(HexPropDefinition definition)

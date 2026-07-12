@@ -92,7 +92,7 @@ namespace HexDemo
         }
     }
 
-    public sealed class HexBattleUI : MonoBehaviour
+    public sealed partial class HexBattleUI : MonoBehaviour
     {
         private const string BattleHudCanvasPrefabPath = "Assets/Prefabs/UI/Battle/BattleHudCanvas.prefab";
         private const string BattlePanelDir = "Assets/Prefabs/UI/Battle/Panels/";
@@ -192,6 +192,7 @@ namespace HexDemo
             _deckLabel.text = _controller.GetDeckSummary();
             _resourceLabel.text = _controller.GetResourceSummary();
             _endTurnButton.interactable = snapshot.canEndTurn;
+            RefreshConsumableBar();
             _drawPileLabel.text = $"抽牌\n{snapshot.piles.draw}";
             _discardPileLabel.text = $"弃牌\n{snapshot.piles.discard}";
             if (_exhaustPileLabel != null)
@@ -308,14 +309,11 @@ namespace HexDemo
 
                 if (_playerStatusBar == null)
                 {
-                    _playerStatusBar = hud.GetComponent<HexStatusIconBar>();
-                    if (_playerStatusBar != null)
-                    {
-                        _playerStatusBar.EnsureBuilt(hud);
-                        var statusRect = _playerStatusBar.Root;
-                        statusRect.anchoredPosition = new Vector2(18f, -78f);
-                        statusRect.sizeDelta = new Vector2(420f, 28f);
-                    }
+                    _playerStatusBar = hud.GetComponent<HexStatusIconBar>() ?? hud.gameObject.AddComponent<HexStatusIconBar>();
+                    _playerStatusBar.EnsureBuilt(hud);
+                    var statusRect = _playerStatusBar.Root;
+                    statusRect.anchoredPosition = new Vector2(18f, -50f);
+                    statusRect.sizeDelta = new Vector2(900f, 40f);
                 }
             }
 
@@ -335,6 +333,8 @@ namespace HexDemo
             }
 
             EnsureTerrainDetailPopup(canvasRoot);
+            EnsureConsumableBar(canvasRoot);
+            ApplyReferenceLayout1920(canvasRoot);
         }
 
         private static GameObject LoadBattlePrefab(string assetName)
@@ -417,8 +417,6 @@ namespace HexDemo
             EnsureStructuredHud(canvasGO.transform);
             if (_enemyIntentPanel == null)
                 Debug.LogWarning("EnemyIntentPanel not found in battle prefabs. Enemy intent row UI will be skipped.");
-            if (_playerStatusBar == null)
-                Debug.LogWarning("HexStatusIconBar component is missing on HUD prefab. Player status icons will be skipped.");
             if (_exhaustPileButton == null || _exhaustPileLabel == null)
                 Debug.LogWarning("ExhaustPile prefab block is missing. Exhaust pile button will be skipped.");
             WireButtonActions();
@@ -488,6 +486,9 @@ namespace HexDemo
                 enemyOverlayButton.onClick.RemoveAllListeners();
                 enemyOverlayButton.onClick.AddListener(CloseEnemyHandPopup);
             }
+            var enemyPopupButton = _enemyHandPopup.GetComponent<Button>() ?? _enemyHandPopup.gameObject.AddComponent<Button>();
+            enemyPopupButton.onClick.RemoveAllListeners();
+            enemyPopupButton.onClick.AddListener(CloseEnemyHandPopup);
             _enemyHandOverlay.gameObject.SetActive(false);
 
             var pileClose = FindByPath<Button>(_pileModal, "CloseButton");
@@ -690,7 +691,12 @@ namespace HexDemo
             }
 
             if (_playLogModal != null && _playLogModal.gameObject.activeSelf)
+            {
                 _playLogModal.gameObject.SetActive(false);
+                return;
+            }
+
+            _controller?.CancelConsumableTargeting();
         }
 
         public void ShowFloatingCombatText(HexBattleUnit unit, HexFloatingFeedbackKind kind, int amount)

@@ -13,6 +13,9 @@ namespace HexDemo
         Vulnerable,
         Bind,
         Stun,
+        Poison,
+        Regeneration,
+        Other,
     }
 
     public sealed class BattleStatusEntry
@@ -23,6 +26,8 @@ namespace HexDemo
         public int stacks;
         public bool isBuff;
         public string shortLabel;
+        public string iconId;
+        public bool isPermanent;
     }
 
     public sealed class BattleIntentSlotView

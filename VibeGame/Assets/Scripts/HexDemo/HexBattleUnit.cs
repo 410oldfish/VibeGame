@@ -108,6 +108,7 @@ namespace HexDemo
 
             State.armor = 0;
             State.bleed = 0;
+            State.poison = 0;
             State.vulnerable = 0;
             State.weak = 0;
             State.stun = 0;
@@ -142,6 +143,7 @@ namespace HexDemo
             State.luck = 0;
             State.vigor = 0;
             State.vampirism = 0;
+            State.regeneration = 0;
             State.holyShield = 0;
             State.immunity = 0;
             State.invincible = 0;
@@ -160,6 +162,16 @@ namespace HexDemo
             State.armorOnAttackCardThisTurn = 0;
             State.armorOnSkillCard = 0;
             State.firstAttackBurnAmount = 0;
+            State.consumableAttackBurnBonus = 0;
+            State.consumableCoffeeTurns = 0;
+            State.consumableCoffeeAmount = 0;
+            State.consumableWisdomTurns = 0;
+            State.consumableWisdomAmount = 0;
+            State.consumableEggTartTurns = 0;
+            State.flyingSecretTurns = 0;
+            State.stealSecretTurns = 0;
+            State.consumableTempStrength = 0;
+            State.consumableTempToughness = 0;
             State.firstAttackBonusPending = false;
             State.weaponSkillFree = false;
             State.extraEnergyPerTurn = 0;
@@ -367,6 +379,16 @@ namespace HexDemo
                 State.bind = Mathf.Max(0, State.bind - 1);
             if (State.phaseMovement > 0)
                 State.phaseMovement = Mathf.Max(0, State.phaseMovement - 1);
+            if (State.consumableTempStrength > 0)
+            {
+                State.strength = Mathf.Max(0, State.strength - State.consumableTempStrength);
+                State.consumableTempStrength = 0;
+            }
+            if (State.consumableTempToughness > 0)
+            {
+                State.toughness = Mathf.Max(0, State.toughness - State.consumableTempToughness);
+                State.consumableTempToughness = 0;
+            }
             State.paralysisActiveThisTurn = 0;
             State.tauntActiveThisTurn = 0;
             if (State.consumeWeaponAtEndTurn)
@@ -530,6 +552,15 @@ namespace HexDemo
             RefreshHealthBar();
         }
 
+        public void ApplyBattleLongAttackPassives(HexBattleUnit target)
+        {
+            if (State == null || target?.State == null || !target.IsAlive || target == this)
+                return;
+
+            if (State.consumableAttackBurnBonus > 0)
+                target.ApplyBurn(State.consumableAttackBurnBonus);
+        }
+
         public void ApplyEntangle(int amount)
         {
             State.entangle += AdjustNegativeAmount(amount, applyNauseaBonus: true, allowWhenImmune: false, allowWhenFrozen: false);
@@ -550,7 +581,7 @@ namespace HexDemo
             if (card == null || card.definition == null)
                 return 0;
 
-            if (card.costsNoEnergyThisTurn)
+            if (card.costsNoEnergyThisTurn || card.costsNoEnergyThisBattle)
                 return 0;
 
             int cost = card.definition.energyCost < 0 ? State.energy : card.definition.energyCost;

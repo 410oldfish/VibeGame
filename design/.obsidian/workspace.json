@@ -13,12 +13,54 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "策划案/职业系统/战士/Feature-战士体系-卖血.md",
+                "file": "策划案/状态效果系统/Foundation-减益状态.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Feature-战士体系-卖血"
+              "title": "Foundation-减益状态"
+            }
+          },
+          {
+            "id": "691ea153833ca0ac",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "策划案/状态效果系统/Foundation-减益状态.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Foundation-减益状态"
+            }
+          },
+          {
+            "id": "0632036b66363e2a",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "策划案/职业系统/通用卡牌.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "通用卡牌"
+            }
+          },
+          {
+            "id": "ad4c860e9c990234",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "策划案/职业系统/战士/Feature-战士卡牌.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Feature-战士卡牌"
             }
           }
         ]
@@ -185,32 +227,33 @@
   },
   "active": "545373335e950e0a",
   "lastOpenFiles": [
-    "策划案/职业系统/战士/Feature-战士体系-减益.md",
-    "策划案/职业系统/战士/Feature-战士.md",
+    "消耗道具/消耗道具基础设定.md",
+    "消耗道具/符咒.md",
+    "策划案/职业系统/通用卡牌.md",
+    "策划案/状态效果系统/Foundation-增益状态.md",
+    "策划案/状态效果系统/Foundation-减益状态.md",
+    "消耗道具/工程.md",
+    "消耗道具/食物.md",
     "策划案/职业系统/战士/Feature-战士卡牌.md",
+    "策划案/职业系统/战士/Feature-战士卡牌创意池.md",
     "策划案/职业系统/战士/Feature-战士体系-塞牌.md",
+    "策划案/职业系统/战士/Feature-战士.md",
     "策划案/职业系统/战士/Feature-战士体系-位移.md",
-    "策划案/职业系统/战士/Feature-战士武器系统（废弃.md",
+    "消耗道具/药水.md",
+    "消耗道具",
+    "accessibility-requirements.md",
+    "会议记录/2026.7.06.md",
+    "ux/interaction-patterns.md",
+    "ux/battle-visual-spec.md",
+    "ux/battle-ux-review.md",
+    "ux/battle-ux-brief.md",
+    "ux/battle-phase4-review.md",
+    "ux/battle-hud.md",
+    "ux/battle-engine-notes.md",
     "策划案/职业系统/战士/Feature-战士体系-卖血.md",
+    "策划案/职业系统/战士/Feature-战士体系-减益.md",
+    "策划案/职业系统/战士/Feature-战士武器系统（废弃.md",
     "策划案/平衡验证/Polish-MVP第一章垂直切片.md",
-    "策划案/奖励成长系统/Feature-奖励与成长设计.md",
-    "策划案/敌人系统/Feature-活墙壁.md",
-    "策划案/敌人系统/Feature-部落酋长.md",
-    "策划案/敌人系统/Feature-寄生藤蔓.md",
-    "策划案/奖励成长系统/Feature-商店与服务设计.md",
-    "策划案/敌人系统/Feature-投矛哥布林.md",
-    "策划案/敌人系统/Presentation-敌方意图展示设计.md",
-    "策划案/敌人系统/Feature-石像鬼.md",
-    "策划案/敌人系统/Feature-哥布林队长.md",
-    "策划案/敌人系统/Feature-哥布林.md",
-    "策划案/敌人系统/Feature-夺心魔.md",
-    "策划案/敌人系统/Feature-敌人牌组与意图机制.md",
-    "策划案/敌人系统/Feature-地狱犬.md",
-    "策划案/敌人系统/Feature-宝箱怪.md",
-    "策划案/设计规范/Feature-已投入设计词条登记.md",
-    "策划案/设计规范/Foundation-卡牌词缀与效果语义.md",
-    "会议记录/2026.6.22.md",
-    "会议记录/2026.6.21.md",
     "程序",
     "策划案",
     "会议记录"

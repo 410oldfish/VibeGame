@@ -15,7 +15,7 @@ namespace HexDemo
         public string cardName;
     }
 
-    public sealed class HexBattleController : MonoBehaviour
+    public sealed partial class HexBattleController : MonoBehaviour
     {
         private sealed class ForcedMovementResult
         {
@@ -48,15 +48,18 @@ namespace HexDemo
         private bool _updateRegistered;
         private readonly List<HexCardPlayLogEntry> _playLog = new();
         private readonly Dictionary<HexBattleUnit, List<HexEnemyIntentSlot>> _enemyIntentSlots = new();
+        private HexBattleUnit _activeAttackPassiveSource;
+        private HexCardInstance _activeAttackPassiveCard;
 
         public System.Action<bool, int, HexBattleUnit> BattleFinished;
 
-        public void Initialize(HexGrid battleGrid, HexBattleUnit playerUnit, IReadOnlyList<HexBattleUnit> enemyUnits, Camera battleCamera)
+        public void Initialize(HexGrid battleGrid, HexBattleUnit playerUnit, IReadOnlyList<HexBattleUnit> enemyUnits, Camera battleCamera, HexRunState runState = null)
         {
             grid = battleGrid;
             rayCamera = battleCamera != null ? battleCamera : Camera.main;
 
             _playerUnit = playerUnit;
+            InitializeConsumables(runState);
             _playerUnit.ResetBattleState();
             _units.Clear();
             _units.Add(playerUnit);
@@ -180,12 +183,15 @@ namespace HexDemo
             }
 
             UpdateHoverFeedback();
-            UpdateMovementHighlights();
+            if (!IsConsumableTargeting())
+                UpdateMovementHighlights();
             if (_busy || _draggedCard != null || _currentTurn != HexBattleFaction.Player)
                 return;
 
             if (Input.GetMouseButtonDown(0))
             {
+                if (TryHandlePendingConsumableTargetClick())
+                    return;
                 if (TryHandleEnemyHandClick())
                     return;
                 TryHandleTerrainDetailClick();
@@ -712,9 +718,11 @@ namespace HexDemo
             }
 
             bool handledByCustomLogic = false;
+            BeginAttackPassiveContext(source, card);
             yield return ResolveCustomCardRoutine(source, target, card, energyCost, targetedCoord, handled => handledByCustomLogic = handled);
             if (handledByCustomLogic)
             {
+                EndAttackPassiveContext();
                 yield return ApplyWarriorFirstAttackCardEffects(source, target, card);
                 source.RefreshLabel();
                 target.RefreshLabel();
@@ -822,6 +830,7 @@ namespace HexDemo
             }
 
             ApplySelfKeywordEffects(source, card);
+            EndAttackPassiveContext();
 
             if (resolvedRuinTargetAttack)
             {
@@ -1012,6 +1021,7 @@ namespace HexDemo
 
             int damage = GetModifiedDamage(source, null, card.definition.amount + Mathf.Max(0, source.State.strength));
             int hpBefore = TileStructureHp(tile);
+            string attackedPropId = tile.propId;
             bool applied = tile.DamageStructure(damage, out bool destroyed);
             int hpAfter = TileStructureHp(tile);
             Debug.Log(
@@ -1024,6 +1034,8 @@ namespace HexDemo
             source.State.damageDealtThisTurn += Mathf.Max(0, damage);
             if (destroyed)
                 Debug.Log($"[RuinAttack] Ruin at {coord.q},{coord.r} destroyed by direct attack.");
+            if (applied && attackedPropId == "consumable_iron_ball")
+                yield return ResolveIronBallHit(source, coord);
         }
 
         private void FlashDirectionalArea(HexAxialCoord aimedCoord, HexBattleUnit source, HexCardDefinition definition)
@@ -1085,7 +1097,29 @@ namespace HexDemo
                         break;
                 }
             }
+
         }
+
+        private void BeginAttackPassiveContext(HexBattleUnit source, HexCardInstance card)
+        {
+            if (source?.State == null || card?.definition?.cardType != HexCardType.Attack)
+            {
+                _activeAttackPassiveSource = null;
+                _activeAttackPassiveCard = null;
+                return;
+            }
+
+            _activeAttackPassiveSource = source;
+            _activeAttackPassiveCard = card;
+        }
+
+        private void EndAttackPassiveContext()
+        {
+            _activeAttackPassiveSource = null;
+            _activeAttackPassiveCard = null;
+        }
+
+        public HexBattleUnitState GetLocalPlayerState() => _playerUnit?.State;
 
         private void ApplySelfKeywordEffects(HexBattleUnit source, HexCardInstance card)
         {
@@ -1281,6 +1315,7 @@ namespace HexDemo
                 ExpireTemporaryObstacles();
                 PrepareEnemyIntents();
                 _playerUnit.BeginTurn();
+                ResolveConsumableTurnStart(_playerUnit);
                 ApplyWarriorBeginTurnPassives(_playerUnit);
                 ApplyDruidBeginTurnPassives(_playerUnit);
                 ApplyBurningAura(_playerUnit);
@@ -1292,6 +1327,7 @@ namespace HexDemo
                     if (_enemyUnits[i] != null && _enemyUnits[i].IsAlive)
                     {
                         _enemyUnits[i].BeginTurn();
+                        ResolveConsumableTurnStart(_enemyUnits[i]);
                         ApplyDruidBeginTurnPassives(_enemyUnits[i]);
                         ApplyBurningAura(_enemyUnits[i]);
                         if (!_enemyUnits[i].IsAlive)
@@ -3632,6 +3668,7 @@ namespace HexDemo
 
         private void HandlePostMovementPassives(HexBattleUnit unit, IReadOnlyList<HexAxialCoord> path, HexAxialCoord? towardTargetCoord, int movedDistance)
         {
+            ResolveConsumableMovementTriggers(unit, path);
             if (unit?.State != null && unit.State.profession == HexCardProfession.Warrior && movedDistance > 0)
                 MarkWarriorEvent(unit, "move");
 
@@ -4443,6 +4480,15 @@ namespace HexDemo
             else if (armorLost <= 0 && beforeHealth == target.State.currentHealth)
                 _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.Blocked, 0);
 
+            if ((healthLost > 0 || armorLost > 0) &&
+                target.IsAlive &&
+                target != source &&
+                source == _activeAttackPassiveSource &&
+                _activeAttackPassiveCard?.definition?.cardType == HexCardType.Attack)
+            {
+                source.ApplyBattleLongAttackPassives(target);
+            }
+
             return healthLost;
         }
 
@@ -4646,7 +4692,7 @@ namespace HexDemo
             if (TryGetRequiredAttackTarget(enemy, out var requiredTarget))
                 return requiredTarget;
 
-            return _playerUnit;
+            return GetConsumableTauntTarget(enemy) ?? _playerUnit;
         }
 
         private IEnumerator ResolveUnitTurnStartStatuses(HexBattleUnit unit)

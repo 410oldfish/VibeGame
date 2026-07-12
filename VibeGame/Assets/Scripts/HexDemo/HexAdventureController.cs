@@ -357,7 +357,7 @@ namespace HexDemo
         private void RefreshMapState()
         {
             if (_runSummaryLabel != null)
-                _runSummaryLabel.text = $"{GetProfessionDisplayName(_runState.profession)}\nHP {_runState.currentHealth}/{_runState.maxHealth}\nGold {_runState.gold}\nDeck {_runState.deckDefinitions.Count}";
+                _runSummaryLabel.text = $"{GetProfessionDisplayName(_runState.profession)}\nHP {_runState.currentHealth}/{_runState.maxHealth}\nGold {_runState.gold}\nDeck {_runState.deckDefinitions.Count}\nItems {_runState.consumables.Count}/{HexConsumableLibrary.GetSlotCount(_runState.profession)}";
 
             var currentNode = _mapData.GetNode(_currentNodeId);
             var availableNodeIds = currentNode != null ? new HashSet<string>(currentNode.outgoingNodeIds) : new HashSet<string>();
@@ -530,7 +530,7 @@ namespace HexDemo
             var controllerGO = new GameObject("BattleController");
             controllerGO.transform.SetParent(roomRoot.transform, false);
             var battleController = controllerGO.AddComponent<HexBattleController>();
-            battleController.Initialize(grid, playerUnit, enemyUnits, _sceneCamera);
+            battleController.Initialize(grid, playerUnit, enemyUnits, _sceneCamera, _runState);
             battleController.BattleFinished += OnBattleFinished;
         }
 
@@ -796,7 +796,7 @@ namespace HexDemo
                     pickButton.onClick.AddListener(() =>
                     {
                         _runState.deckDefinitions.Add(reward);
-                        CompleteRoomAndReturnToMap();
+                        ShowConsumableReward();
                     });
                     var pickLabel = pickButtonPanel.Find("Label")?.GetComponent<TextMeshProUGUI>()
                         ?? CreateText(pickButtonPanel.transform, "Label", Vector2.zero, new Vector2(180f, 50f), 22f, FontStyles.Bold);
@@ -814,6 +814,73 @@ namespace HexDemo
                     pickLabel.text = "Choose";
                 }
             });
+        }
+
+        private void ShowConsumableReward(string excludedRewardId = null)
+        {
+            var reward = HexConsumableLibrary.GetRandomDropExcluding(excludedRewardId);
+            if (reward == null)
+            {
+                CompleteRoomAndReturnToMap();
+                return;
+            }
+
+            BuildOverlay("道具掉落", overlay =>
+            {
+                var title = CreateText(overlay.transform, "ItemTitle", new Vector2(56f, -112f), new Vector2(700f, 50f), 34f, FontStyles.Bold);
+                title.text = reward.displayName;
+                var body = CreateText(overlay.transform, "ItemBody", new Vector2(56f, -176f), new Vector2(700f, 150f), 24f, FontStyles.Normal);
+                body.text = $"{reward.category} · 可使用 {reward.maxUses} 次\n{reward.description}";
+
+                int capacity = HexConsumableLibrary.GetSlotCount(_runState.profession);
+                if (_runState.consumables.Count < capacity)
+                {
+                    CreateConsumableRewardButton(overlay.transform, new Vector2(-120f, 40f), "拾取", () =>
+                    {
+                        _runState.consumables.Add(new HexConsumableInstance(reward));
+                        CompleteRoomAndReturnToMap();
+                    });
+                    CreateConsumableRewardButton(overlay.transform, new Vector2(120f, 40f), "刷新", () => ShowConsumableReward(reward.id));
+                }
+                else
+                {
+                    var hint = CreateText(overlay.transform, "FullHint", new Vector2(56f, -334f), new Vector2(700f, 42f), 22f, FontStyles.Bold);
+                    hint.text = "道具栏已满，选择一个道具丢弃并替换：";
+                    for (int i = 0; i < _runState.consumables.Count; i++)
+                    {
+                        int index = i;
+                        var existing = _runState.consumables[i];
+                        string existingName = existing?.Definition?.displayName ?? "未知道具";
+                        CreateChoiceButton(overlay.transform, new Vector2(0f, -30f - i * 64f), $"丢弃 {existingName}", () =>
+                        {
+                            _runState.consumables[index] = new HexConsumableInstance(reward);
+                            CompleteRoomAndReturnToMap();
+                        });
+                    }
+
+                    CreateConsumableRewardButton(overlay.transform, new Vector2(250f, 210f), "刷新道具", () => ShowConsumableReward(reward.id));
+                }
+
+                var skip = CreateBottomButton(overlay.transform, "放弃道具", CompleteRoomAndReturnToMap);
+                skip.anchoredPosition = new Vector2(0f, 24f);
+            });
+        }
+
+        private RectTransform CreateConsumableRewardButton(Transform parent, Vector2 anchoredPosition, string label, UnityEngine.Events.UnityAction onClick)
+        {
+            var panel = CreatePanel(parent, $"{label}_ConsumableReward", anchoredPosition, new Vector2(210f, 60f),
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            panel.GetComponent<Image>().color = label.Contains("刷新")
+                ? new Color(0.2f, 0.42f, 0.62f, 0.96f)
+                : new Color(0.24f, 0.5f, 0.3f, 0.96f);
+
+            var button = panel.gameObject.AddComponent<Button>();
+            button.onClick.AddListener(onClick);
+            var text = CreateText(panel, "Label", Vector2.zero, new Vector2(202f, 56f), 24f, FontStyles.Bold);
+            text.alignment = TextAlignmentOptions.Center;
+            text.raycastTarget = false;
+            text.text = label;
+            return panel;
         }
 
         private RectTransform CreateShopOfferCardRoot(Transform parent, string instanceName)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -275,6 +276,7 @@ namespace HexDemo
         public bool upgraded;
         public int temporaryCostModifier;
         public bool costsNoEnergyThisTurn;
+        public bool costsNoEnergyThisBattle;
         public bool exhaustWhenPlayed;
 
         private readonly CardRuntimeFlagLayer _runtimeFlags = new();
@@ -494,6 +496,7 @@ namespace HexDemo
         public int currentHealth;
         public int armor;
         public int bleed;
+        public int poison;
         public int vulnerable;
         public int weak;
         public int stun;
@@ -528,6 +531,7 @@ namespace HexDemo
         public int luck;
         public int vigor;
         public int vampirism;
+        public int regeneration;
         public int holyShield;
         public int immunity;
         public int invincible;
@@ -554,6 +558,16 @@ namespace HexDemo
         public int armorOnAttackCardThisTurn;
         public int armorOnSkillCard;
         public int firstAttackBurnAmount;
+        public int consumableAttackBurnBonus;
+        public int consumableCoffeeTurns;
+        public int consumableCoffeeAmount;
+        public int consumableWisdomTurns;
+        public int consumableWisdomAmount;
+        public int consumableEggTartTurns;
+        public int flyingSecretTurns;
+        public int stealSecretTurns;
+        public int consumableTempStrength;
+        public int consumableTempToughness;
         public bool firstAttackBonusPending;
         public bool weaponSkillFree;
         public int extraEnergyPerTurn;
@@ -630,6 +644,7 @@ namespace HexDemo
         public int gold = 0;
         public HexCardProfession profession = HexCardProfession.Warrior;
         public List<HexCardDefinition> deckDefinitions = new();
+        public List<HexConsumableInstance> consumables = new();
 
         public HexRunState Clone()
         {
@@ -640,6 +655,12 @@ namespace HexDemo
                 gold = gold,
                 profession = profession,
                 deckDefinitions = new List<HexCardDefinition>(deckDefinitions),
+                consumables = consumables.ConvertAll(item => new HexConsumableInstance
+                {
+                    runtimeId = item.runtimeId,
+                    definitionId = item.definitionId,
+                    remainingUses = item.remainingUses,
+                }),
             };
         }
     }
@@ -979,6 +1000,10 @@ namespace HexDemo
             "temp_throwing_axe", "投斧", HexCardType.Attack, HexCardProfession.Common, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit,
             1, 10, 3, 0, "Temporary", "本场临时牌。射程3，造成10伤。", new Color(0.82f, 0.58f, 0.2f, 1f), false, new[] { "临时" });
 
+        private static readonly HexCardDefinition CommonDash = Card(
+            "common_dash", "疾行", HexCardType.Action, HexCardProfession.Common, HexCardEffectType.Move, HexCardTargetType.Tile,
+            0, 7, 0, 0, "Common", "移动最多7格。", new Color(0.28f, 0.72f, 0.86f, 1f));
+
         private static readonly IReadOnlyList<HexCardDefinition> WarriorDesignCards = CreateWarriorDesignCards();
 
         private static readonly IReadOnlyList<HexCardDefinition> EnemyCards = new[]
@@ -1008,6 +1033,7 @@ namespace HexDemo
         {
             Daze,
             Wound,
+            CommonDash,
         };
 
         private static List<HexCardDefinition> s_loadedWarriorPool;
@@ -1039,6 +1065,7 @@ namespace HexDemo
         public static HexCardDefinition GetWound() => Wound;
         public static HexCardDefinition GetFearToken() => FearToken;
         public static HexCardDefinition GetTemporaryThrowingAxe() => TemporaryThrowingAxe;
+        public static HexCardDefinition GetCommonDash() => CommonDash;
         public static HexCardDefinition GetGoblinStrike() => GoblinStrike;
         public static HexCardDefinition GetGoblinApproach() => GoblinApproach;
         public static IReadOnlyList<HexCardDefinition> GetEnemyCards() => EnemyCards;
@@ -1049,9 +1076,13 @@ namespace HexDemo
             if (s_loadedCommonPool == null)
             {
                 var fromDb = Database != null ? Database.BuildCommon() : null;
-                s_loadedCommonPool = fromDb != null && fromDb.Count > 0
-                    ? fromDb
-                    : new List<HexCardDefinition>(CommonPool);
+                s_loadedCommonPool = fromDb != null && fromDb.Count > 0 ? fromDb : new List<HexCardDefinition>();
+                for (int i = 0; i < CommonPool.Count; i++)
+                {
+                    var builtIn = CommonPool[i];
+                    if (builtIn != null && !s_loadedCommonPool.Any(card => card != null && card.id == builtIn.id))
+                        s_loadedCommonPool.Add(builtIn);
+                }
             }
 
             return s_loadedCommonPool;
@@ -1767,6 +1798,16 @@ namespace HexDemo
                     continue;
 
                 candidates.Add(card);
+            }
+
+            var commonPool = GetCommonPool();
+            for (int i = 0; i < commonPool.Count; i++)
+            {
+                var card = commonPool[i];
+                if (card == null || card.isUnplayable || card.cardType == HexCardType.Status || card.cardType == HexCardType.Curse || card.cardType == HexCardType.Special)
+                    continue;
+                if (!candidates.Any(existing => existing != null && existing.id == card.id))
+                    candidates.Add(card);
             }
 
             return candidates;
