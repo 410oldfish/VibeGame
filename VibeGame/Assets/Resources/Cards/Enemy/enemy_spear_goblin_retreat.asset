@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: enemy_spear_goblin_retreat
   m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
   id: enemy_spear_goblin_retreat
-  displayName: "\u540E\u64A4"
+  displayName: "\u79FB\u52A8"
   cardType: 5
   profession: 2
-  effectType: 4
+  effectType: 3
   targetType: 1
   energyCost: 0
   amount: 1
@@ -25,7 +25,7 @@ MonoBehaviour:
   effectRadius: 0
   priority: 0
   rarity: Enemy
-  description: "\u8FDC\u79BB\u6700\u8FD1\u654C\u65B9\u5355\u4F4D\u79FB\u52A81\u683C\u3002"
+  description: "\u6309\u7406\u60F3\u653B\u51FB\u8DDD\u79BB\u76F8\u5BF9\u76EE\u6807\u79FB\u52A81\u683C\u3002"
   color: {r: 0.42, g: 0.6, b: 0.34, a: 1}
   isUnplayable: 0
   upgraded: 0

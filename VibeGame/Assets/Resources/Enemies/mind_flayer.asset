@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf63922b91d736046bcd101d46b08c66, type: 3}
+  m_Name: mind_flayer
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexEnemyDefinitionSO
+  id: mind_flayer
+  displayName: "\u593A\u5FC3\u9B54"
+  encounterType: 2
+  intentPattern: 2
+  attackMinRange: 1
+  attackMaxRange: 6
+  emptyDrawPileStrengthGain: 0
+  maxSummons: 4
+  summonHealth: 8
+  phaseTwoHealthRatio: 0.5
+  intentSlots: 00000000010000000200000002000000
+  deckCardIds:
+  - enemy_mind_flayer_steal
+  - enemy_mind_flayer_steal
+  - enemy_mind_flayer_blast
+  - enemy_mind_flayer_blast
+  - enemy_mind_flayer_tentacles
+  - enemy_mind_flayer_tentacles
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_drift
+  - enemy_mind_flayer_drift
+  - enemy_mind_flayer_shield
+  - enemy_mind_flayer_shield
+  - enemy_mind_flayer_obscure
+  phaseTwoDeckCardIds:
+  - enemy_mind_flayer_steal
+  - enemy_mind_flayer_steal
+  - enemy_mind_flayer_blast
+  - enemy_mind_flayer_blast
+  - enemy_mind_flayer_tentacles
+  - enemy_mind_flayer_tentacles
+  - enemy_mind_flayer_extract
+  - enemy_mind_flayer_extract
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_lash
+  - enemy_mind_flayer_drift
+  - enemy_mind_flayer_drift
+  - enemy_mind_flayer_shield
+  - enemy_mind_flayer_shield
+  - enemy_mind_flayer_obscure
+  bottomCardId: enemy_mind_flayer_bottom

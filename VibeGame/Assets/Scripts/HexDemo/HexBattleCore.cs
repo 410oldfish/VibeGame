@@ -187,8 +187,12 @@ namespace HexDemo
         public int attackMinRange = 1;
         public int attackMaxRange = 1;
         public int emptyDrawPileStrengthGain;
+        public int maxSummons;
+        public int summonHealth;
+        public float phaseTwoHealthRatio;
         public List<HexEnemyIntentSlotKind> intentSlots = new();
         public List<HexCardDefinition> deckDefinitions = new();
+        public List<HexCardDefinition> phaseTwoDeckDefinitions = new();
         public HexCardDefinition bottomCard;
     }
 
@@ -601,6 +605,17 @@ namespace HexDemo
         public string enemyDefinitionId;
         public int enemyAttackMinRange = 1;
         public int enemyAttackMaxRange = 1;
+        public int enemyTurnIndex;
+        public int enemyLastWarcryTurn = -99;
+        public bool enemyPhaseTwoApplied;
+        public bool cannotBeKnockedBackThisTurn;
+        public bool isSummonedEnemy;
+        public string summonOwnerId;
+        public int pendingStrengthNextTurn;
+        public bool enemyDamageReductionActive;
+        public bool enemyIgnitionPassive;
+        public bool enemySpreadActiveThisTurn;
+        public int enemyHiddenIntentSlotIndex = -1;
         public HexWeaponType weapon;
         public bool drawDisabledThisTurn;
         public int attackRepeatBonusThisTurn;
@@ -939,13 +954,13 @@ namespace HexDemo
             effectType = HexCardEffectType.Attack,
             targetType = HexCardTargetType.EnemyUnit,
             energyCost = 0,
-            amount = 5,
+            amount = 6,
             range = 1,
             castRange = 1,
             effectRadius = 0,
             priority = 1,
             rarity = "Enemy",
-            description = "对距离1的敌方单位造成5点伤害。",
+            description = "对距离1的敌方单位造成6点伤害。",
             color = new Color(0.77f, 0.3f, 0.25f, 1f),
         };
 
@@ -1020,6 +1035,19 @@ namespace HexDemo
             "enemy_goblin_captain_guard", "格挡", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self,
             0, 8, 0, 0, "Enemy", "获得8点格挡。", new Color(0.27f, 0.52f, 0.82f, 1f));
 
+        private static readonly HexCardDefinition SpearGoblinCoverRetreat = Card(
+            "enemy_spear_goblin_cover_retreat", "掩体后撤", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.MoveAway, HexCardTargetType.EnemyUnit,
+            0, 1, 0, 0, "Enemy", "后撤1并获得4格挡；邻接残骸时额外获得3格挡。", new Color(0.35f, 0.57f, 0.56f, 1f));
+        private static readonly HexCardDefinition SpearGoblinVolley = Card(
+            "enemy_spear_goblin_volley", "齐射", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit,
+            0, 3, 3, 0, "Enemy", "对距离2-3内最多2名敌人各造成3点伤害。", new Color(0.75f, 0.38f, 0.22f, 1f));
+        private static readonly HexCardDefinition GoblinCaptainRally = Card(
+            "enemy_goblin_captain_rally", "集结", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self,
+            0, 1, 0, 0, "Enemy", "随从少于2只时召唤1只哥布林，否则获得1力量。", new Color(0.48f, 0.38f, 0.72f, 1f));
+        private static readonly HexCardDefinition GoblinCaptainShieldWall = Card(
+            "enemy_goblin_captain_shield_wall", "盾墙", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self,
+            0, 12, 0, 0, "Enemy", "获得12格挡，本回合不可被击退。", new Color(0.24f, 0.45f, 0.7f, 1f));
+
         private static readonly HexCardDefinition ChieftainHeavyStrike = Card(
             "enemy_chieftain_heavy_strike", "重击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit,
             0, 15, 1, 0, "Enemy", "邻格15伤。", new Color(0.82f, 0.32f, 0.22f, 1f));
@@ -1039,6 +1067,65 @@ namespace HexDemo
         private static readonly HexCardDefinition ChieftainQuake = Card(
             "enemy_chieftain_quake", "震地", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.Self,
             0, 5, 0, 2, "Enemy", "邻格2全体5伤，击退1；随机1格高台变为废墟木箱。", new Color(0.68f, 0.38f, 0.18f, 1f));
+
+        private static readonly HexCardDefinition SkeletonStrike = Card("enemy_skeleton_strike", "骨击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 6, 1, 0, "Enemy", "邻格6伤。", new Color(0.58f, 0.57f, 0.52f, 1f));
+        private static readonly HexCardDefinition SkeletonShamble = Card("enemy_skeleton_shamble", "蹒跚", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "朝最近敌人移动1格。", new Color(0.44f, 0.52f, 0.38f, 1f));
+        private static readonly HexCardDefinition SkeletonShield = Card("enemy_skeleton_shield", "骨盾", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 4, 0, 0, "Enemy", "获得4格挡。", new Color(0.42f, 0.5f, 0.58f, 1f));
+        private static readonly HexCardDefinition SkeletonBottom = Card("enemy_skeleton_bottom", "散骨", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 4, 0, 0, "Enemy", "底牌：失去4生命，下回合获得2力量。", new Color(0.45f, 0.42f, 0.4f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition VineStrike = Card("enemy_vine_strike", "藤刺", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 5, 1, 0, "Enemy", "邻格5伤。", new Color(0.32f, 0.58f, 0.3f, 1f));
+        private static readonly HexCardDefinition VineEntangle = Card("enemy_vine_entangle", "缠绕", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 3, 1, 0, "Enemy", "邻格3伤并施加束缚1。", new Color(0.28f, 0.52f, 0.26f, 1f));
+        private static readonly HexCardDefinition VineSnare = Card("enemy_vine_snare", "缠足", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 1, 2, 0, "Enemy", "射程2束缚1；已束缚则拉拽1。", new Color(0.36f, 0.56f, 0.3f, 1f));
+        private static readonly HexCardDefinition VineCrawl = Card("enemy_vine_crawl", "爬移", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "朝最近敌人移动1格。", new Color(0.38f, 0.58f, 0.3f, 1f));
+        private static readonly HexCardDefinition VineRoot = Card("enemy_vine_root", "根须", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 6, 0, 0, "Enemy", "获得6格挡。", new Color(0.32f, 0.48f, 0.3f, 1f));
+        private static readonly HexCardDefinition VineSpread = Card("enemy_vine_spread", "蔓延", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "本回合残骸受击时追加束缚。", new Color(0.3f, 0.5f, 0.26f, 1f));
+        private static readonly HexCardDefinition VineSporeSac = Card("enemy_vine_spore_sac", "孢囊", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.PlaceRuin, HexCardTargetType.Self, 0, 3, 1, 0, "Enemy", "邻格放置寄生残骸。", new Color(0.4f, 0.56f, 0.28f, 1f));
+        private static readonly HexCardDefinition VineBottom = Card("enemy_vine_bottom", "孢子", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 2, 0, 0, "Enemy", "底牌：随机敌方束缚2。", new Color(0.34f, 0.52f, 0.28f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition WallStab = Card("enemy_wall_stab", "刺击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 5, 1, 0, "Enemy", "邻格5伤。", new Color(0.52f, 0.45f, 0.34f, 1f));
+        private static readonly HexCardDefinition WallRootStab = Card("enemy_wall_root_stab", "根须刺", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 4, 1, 0, "Enemy", "邻格4伤；目标束缚时额外3伤。", new Color(0.48f, 0.42f, 0.32f, 1f));
+        private static readonly HexCardDefinition WallCrush = Card("enemy_wall_crush", "挤压", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 3, 1, 0, "Enemy", "邻格3伤并击退1。", new Color(0.56f, 0.4f, 0.3f, 1f));
+        private static readonly HexCardDefinition WallGrow = Card("enemy_wall_grow", "生长", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 1, 0, "Enemy", "邻格放置障碍。", new Color(0.4f, 0.5f, 0.3f, 1f));
+        private static readonly HexCardDefinition WallThickHide = Card("enemy_wall_thick_hide", "厚皮", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 8, 0, 0, "Enemy", "获得8格挡。", new Color(0.42f, 0.45f, 0.38f, 1f));
+        private static readonly HexCardDefinition WallRegenerate = Card("enemy_wall_regenerate", "再生", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 3, 0, 0, "Enemy", "回复3生命。", new Color(0.32f, 0.58f, 0.34f, 1f));
+        private static readonly HexCardDefinition WallBottom = Card("enemy_wall_bottom", "墙裂", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 5, 1, 0, "Enemy", "底牌：邻格放置障碍，失败则获得5格挡。", new Color(0.46f, 0.43f, 0.36f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition GargoyleClaw = Card("enemy_gargoyle_claw", "爪击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 6, 1, 0, "Enemy", "邻格6伤。", new Color(0.52f, 0.5f, 0.56f, 1f));
+        private static readonly HexCardDefinition GargoyleDive = Card("enemy_gargoyle_dive", "俯冲", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.MoveToward, HexCardTargetType.EnemyUnit, 0, 8, 2, 0, "Enemy", "直线2突进并造成8伤。", new Color(0.58f, 0.5f, 0.58f, 1f));
+        private static readonly HexCardDefinition GargoyleStoneSkin = Card("enemy_gargoyle_stone_skin", "石肤", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 8, 0, 0, "Enemy", "获得8格挡；邻接障碍时额外4。", new Color(0.46f, 0.48f, 0.56f, 1f));
+        private static readonly HexCardDefinition GargoyleHover = Card("enemy_gargoyle_hover", "盘旋", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "移动至邻接障碍的空格。", new Color(0.44f, 0.5f, 0.58f, 1f));
+        private static readonly HexCardDefinition GargoyleGuard = Card("enemy_gargoyle_guard", "守势", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 25, 0, 0, "Enemy", "邻接障碍时受到伤害降低25%。", new Color(0.46f, 0.45f, 0.54f, 1f));
+        private static readonly HexCardDefinition GargoyleGaze = Card("enemy_gargoyle_gaze", "凝视", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 1, 2, 0, "Enemy", "射程2束缚1。", new Color(0.46f, 0.38f, 0.58f, 1f));
+        private static readonly HexCardDefinition GargoyleRockfall = Card("enemy_gargoyle_rockfall", "落石", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 1, 0, "Enemy", "邻格放置障碍。", new Color(0.5f, 0.46f, 0.42f, 1f));
+        private static readonly HexCardDefinition GargoyleBottom = Card("enemy_gargoyle_bottom", "石落", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 2, 1, 0, "Enemy", "底牌：邻格放置障碍，失败则力量+2。", new Color(0.5f, 0.46f, 0.42f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition HellhoundBite = Card("enemy_hellhound_bite", "撕咬", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 5, 1, 0, "Enemy", "邻格5伤。", new Color(0.72f, 0.3f, 0.18f, 1f));
+        private static readonly HexCardDefinition HellhoundChainBite = Card("enemy_hellhound_chain_bite", "连环咬", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 3, 1, 0, "Enemy", "邻格3伤，3次。", new Color(0.76f, 0.28f, 0.16f, 1f));
+        private static readonly HexCardDefinition HellhoundFlameFang = Card("enemy_hellhound_flame_fang", "焰牙", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 4, 1, 0, "Enemy", "邻格4伤并施加燃烧2。", new Color(0.82f, 0.3f, 0.12f, 1f));
+        private static readonly HexCardDefinition HellhoundCharge = Card("enemy_hellhound_charge", "冲锋", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.MoveToward, HexCardTargetType.EnemyUnit, 0, 6, 2, 0, "Enemy", "直线2突进，首个敌人6伤。", new Color(0.76f, 0.38f, 0.14f, 1f));
+        private static readonly HexCardDefinition HellhoundLickFire = Card("enemy_hellhound_lick_fire", "舔火", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 5, 0, 0, "Enemy", "回复5生命，自身燃烧1。", new Color(0.68f, 0.34f, 0.16f, 1f));
+        private static readonly HexCardDefinition HellhoundInstinct = Card("enemy_hellhound_instinct", "纵火本能", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "攻击命中时50%额外燃烧1。", new Color(0.72f, 0.28f, 0.12f, 1f));
+        private static readonly HexCardDefinition HellhoundSniff = Card("enemy_hellhound_sniff", "嗅探", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "朝燃烧最高目标移动1格。", new Color(0.54f, 0.42f, 0.24f, 1f));
+        private static readonly HexCardDefinition HellhoundEmber = Card("enemy_hellhound_ember", "余烬舔舐", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 2, 1, 0, "Enemy", "邻格生成2回合着火场地。", new Color(0.78f, 0.32f, 0.12f, 1f));
+        private static readonly HexCardDefinition HellhoundBottom = Card("enemy_hellhound_bottom", "炼狱吐息", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 5, 3, 0, "Enemy", "底牌：直线3全体5伤、燃烧2，自身力量+1。", new Color(0.84f, 0.24f, 0.1f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition MimicFrenzy = Card("enemy_mimic_frenzy", "狂咬", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 4, 1, 0, "Enemy", "邻格4伤，2次。", new Color(0.58f, 0.24f, 0.2f, 1f));
+        private static readonly HexCardDefinition MimicPounce = Card("enemy_mimic_pounce", "扑击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.MoveToward, HexCardTargetType.EnemyUnit, 0, 7, 2, 0, "Enemy", "突进并造成7伤。", new Color(0.62f, 0.28f, 0.18f, 1f));
+        private static readonly HexCardDefinition MimicShell = Card("enemy_mimic_shell", "硬壳", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 10, 0, 0, "Enemy", "获得10格挡。", new Color(0.48f, 0.42f, 0.3f, 1f));
+        private static readonly HexCardDefinition MimicReveal = Card("enemy_mimic_reveal", "揭盖", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 2, 0, 0, "Enemy", "本回合获得2力量。", new Color(0.64f, 0.4f, 0.2f, 1f));
+        private static readonly HexCardDefinition MimicSticky = Card("enemy_mimic_sticky", "粘牙", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 3, 1, 0, "Enemy", "邻格3伤并束缚1。", new Color(0.54f, 0.3f, 0.22f, 1f));
+        private static readonly HexCardDefinition MimicGreed = Card("enemy_mimic_greed", "贪婪", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "死亡时生成木箱。", new Color(0.66f, 0.5f, 0.2f, 1f));
+        private static readonly HexCardDefinition MimicBottom = Card("enemy_mimic_bottom", "吐宝", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 4, 1, 0, "Enemy", "底牌：邻格生成木箱，失败则随机敌方受到6伤。", new Color(0.68f, 0.5f, 0.2f, 1f), false, new[] { "底牌" });
+
+        private static readonly HexCardDefinition MindSteal = Card("enemy_mind_flayer_steal", "思维窃取", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 1, 2, 0, "Enemy", "复制主目标上一回合最后打出的攻击或技能。", new Color(0.48f, 0.3f, 0.7f, 1f));
+        private static readonly HexCardDefinition MindBlast = Card("enemy_mind_flayer_blast", "精神震爆", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 20, 6, 0, "Enemy", "主目标20伤，弃牌堆加入3张眩晕。", new Color(0.58f, 0.26f, 0.72f, 1f));
+        private static readonly HexCardDefinition MindTentacles = Card("enemy_mind_flayer_tentacles", "触手牵引", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 2, 2, 0, "Enemy", "召唤2只心灵触手。", new Color(0.44f, 0.28f, 0.66f, 1f));
+        private static readonly HexCardDefinition MindExtract = Card("enemy_mind_flayer_extract", "抽取心智", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 50, 1, 0, "Enemy", "邻格50伤。", new Color(0.68f, 0.2f, 0.62f, 1f));
+        private static readonly HexCardDefinition MindLash = Card("enemy_mind_flayer_lash", "心灵鞭挞", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 7, 2, 0, "Enemy", "射程2，7伤。", new Color(0.54f, 0.3f, 0.68f, 1f));
+        private static readonly HexCardDefinition MindDrift = Card("enemy_mind_flayer_drift", "飘移", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.MoveAway, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "远离最近敌人1格。", new Color(0.4f, 0.38f, 0.64f, 1f));
+        private static readonly HexCardDefinition MindShield = Card("enemy_mind_flayer_shield", "灵能盾", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 10, 0, 0, "Enemy", "获得10格挡。", new Color(0.42f, 0.34f, 0.66f, 1f));
+        private static readonly HexCardDefinition MindObscure = Card("enemy_mind_flayer_obscure", "遮蔽", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "隐藏一个公开意图牌名。", new Color(0.36f, 0.3f, 0.58f, 1f));
+        private static readonly HexCardDefinition MindBottom = Card("enemy_mind_flayer_bottom", "心灵共振", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 5, 0, 0, "Enemy", "底牌：主目标弃牌堆加入2张眩晕，自身获得5格挡。", new Color(0.48f, 0.28f, 0.68f, 1f), false, new[] { "底牌" });
 
         private static readonly HexCardDefinition GoblinBottom = Card(
             "enemy_goblin_bottom", "越战越勇", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self,
@@ -1073,9 +1160,13 @@ namespace HexDemo
             GoblinRoll,
             SpearGoblinThrow,
             SpearGoblinRetreat,
+            SpearGoblinCoverRetreat,
+            SpearGoblinVolley,
             GoblinCaptainNet,
             GoblinCaptainWarCry,
             GoblinCaptainGuard,
+            GoblinCaptainRally,
+            GoblinCaptainShieldWall,
             ChieftainHeavyStrike,
             ChieftainCharge,
             ChieftainBrace,
@@ -1085,6 +1176,13 @@ namespace HexDemo
             SpearGoblinBottom,
             CaptainBottom,
             ChieftainBottom,
+            SkeletonStrike, SkeletonShamble, SkeletonShield, SkeletonBottom,
+            VineStrike, VineEntangle, VineSnare, VineCrawl, VineRoot, VineSpread, VineSporeSac, VineBottom,
+            WallStab, WallRootStab, WallCrush, WallGrow, WallThickHide, WallRegenerate, WallBottom,
+            GargoyleClaw, GargoyleDive, GargoyleStoneSkin, GargoyleHover, GargoyleGuard, GargoyleGaze, GargoyleRockfall, GargoyleBottom,
+            HellhoundBite, HellhoundChainBite, HellhoundFlameFang, HellhoundCharge, HellhoundLickFire, HellhoundInstinct, HellhoundSniff, HellhoundEmber, HellhoundBottom,
+            MimicFrenzy, MimicPounce, MimicShell, MimicReveal, MimicSticky, MimicGreed, MimicBottom,
+            MindSteal, MindBlast, MindTentacles, MindExtract, MindLash, MindDrift, MindShield, MindObscure, MindBottom,
         };
 
         private static readonly IReadOnlyList<HexCardDefinition> RewardPool = WarriorDesignCards;
@@ -1102,8 +1200,11 @@ namespace HexDemo
         private static List<HexCardDefinition> s_loadedCommonPool;
 
         private const string CardDatabaseResourcePath = "HexCardDatabase";
+        private const string EnemyDatabaseResourcePath = "HexEnemyDatabase";
         private static HexCardDatabaseSO s_database;
         private static bool s_databaseChecked;
+        private static HexEnemyDatabaseSO s_enemyDatabase;
+        private static bool s_enemyDatabaseChecked;
 
         private static HexCardDatabaseSO Database
         {
@@ -1116,6 +1217,20 @@ namespace HexDemo
                 }
 
                 return s_database;
+            }
+        }
+
+        private static HexEnemyDatabaseSO EnemyDatabase
+        {
+            get
+            {
+                if (!s_enemyDatabaseChecked)
+                {
+                    s_enemyDatabaseChecked = true;
+                    s_enemyDatabase = Resources.Load<HexEnemyDatabaseSO>(EnemyDatabaseResourcePath);
+                }
+
+                return s_enemyDatabase;
             }
         }
 
@@ -1233,8 +1348,10 @@ namespace HexDemo
             return new List<HexCardDefinition>
             {
                 SpearGoblinThrow, SpearGoblinThrow, SpearGoblinThrow, SpearGoblinThrow,
-                GoblinApproach, GoblinApproach, GoblinApproach,
+                SpearGoblinRetreat, SpearGoblinRetreat, SpearGoblinRetreat,
                 GoblinApproach, GoblinApproach,
+                SpearGoblinCoverRetreat,
+                SpearGoblinVolley,
             };
         }
 
@@ -1247,10 +1364,12 @@ namespace HexDemo
                 GoblinCaptainNet, GoblinCaptainNet,
                 GoblinCaptainWarCry, GoblinCaptainWarCry,
                 GoblinCaptainGuard, GoblinCaptainGuard,
+                GoblinCaptainRally,
+                GoblinCaptainShieldWall,
             };
         }
 
-        public static List<HexCardDefinition> CreateChieftainDeck()
+        public static List<HexCardDefinition> CreateChieftainPhaseOneDeck()
         {
             return new List<HexCardDefinition>
             {
@@ -1258,21 +1377,84 @@ namespace HexDemo
                 ChieftainCharge, ChieftainCharge, ChieftainCharge,
                 ChieftainBrace, ChieftainBrace,
                 ChieftainDrum, ChieftainDrum,
-                ChieftainQuake, ChieftainQuake,
                 GoblinApproach, GoblinApproach,
             };
         }
 
+        public static List<HexCardDefinition> CreateChieftainPhaseTwoDeck()
+        {
+            var deck = CreateChieftainPhaseOneDeck();
+            deck.RemoveAll(card => card == GoblinApproach);
+            deck.Add(ChieftainQuake);
+            deck.Add(ChieftainQuake);
+            return deck;
+        }
+
+        public static List<HexCardDefinition> CreateChieftainDeck() => CreateChieftainPhaseOneDeck();
+
+        private static List<HexCardDefinition> Repeat(params (HexCardDefinition card, int count)[] entries)
+        {
+            var result = new List<HexCardDefinition>();
+            for (int i = 0; i < entries.Length; i++)
+                for (int count = 0; count < entries[i].count; count++)
+                    result.Add(entries[i].card);
+            return result;
+        }
+
         public static HexEnemyDefinition GetEnemyDefinition(string id)
         {
-            return id switch
+            if (string.IsNullOrWhiteSpace(id))
+                return null;
+            id = id.Trim();
+            if (EnemyDatabase != null && EnemyDatabase.TryBuild(id, out var fromDatabase))
+                return fromDatabase;
+            return CreateBuiltInEnemyDefinition(id);
+        }
+
+        public static bool TryGetEnemyDefinition(string id, out HexEnemyDefinition definition)
+        {
+            definition = GetEnemyDefinition(id);
+            return definition != null;
+        }
+
+        public static IReadOnlyList<string> GetBuiltInEnemyIds() => new[]
+        {
+            "goblin", "spear_goblin", "goblin_captain", "tribal_chieftain", "skeleton",
+            "parasitic_vine", "living_wall", "gargoyle", "hellhound", "mimic", "mind_flayer",
+        };
+
+        private static HexEnemyDefinition CreateBuiltInEnemyDefinition(string id)
+        {
+            switch (id)
             {
-                "goblin" => CreateEnemyDefinition("goblin", "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 5, GoblinBottom, CreateGoblinDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack),
-                "spear_goblin" => CreateEnemyDefinition("spear_goblin", "投矛哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Ranged, 2, 3, 1, SpearGoblinBottom, CreateSpearGoblinDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack),
-                "goblin_captain" => CreateEnemyDefinition("goblin_captain", "哥布林队长", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.ApproachStrike, 1, 1, 1, CaptainBottom, CreateGoblinCaptainDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free),
-                "tribal_chieftain" => CreateEnemyDefinition("tribal_chieftain", "部落酋长", HexEnemyEncounterType.Boss, HexEnemyIntentPattern.ApproachStrike, 1, 1, 2, ChieftainBottom, CreateChieftainDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free, HexEnemyIntentSlotKind.Free),
-                _ => CreateEnemyDefinition("goblin", "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 5, GoblinBottom, CreateGoblinDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack),
-            };
+                case "goblin":
+                    return CreateEnemyDefinition(id, "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 5, GoblinBottom, CreateGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                case "spear_goblin":
+                    return CreateEnemyDefinition(id, "投矛哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Ranged, 2, 3, 1, SpearGoblinBottom, CreateSpearGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                case "goblin_captain":
+                    return CreateEnemyDefinition(id, "哥布林队长", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.ApproachStrike, 1, 1, 1, CaptainBottom, CreateGoblinCaptainDeck(), 2, 15, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free);
+                case "tribal_chieftain":
+                    return CreateEnemyDefinition(id, "部落酋长", HexEnemyEncounterType.Boss, HexEnemyIntentPattern.ApproachStrike, 1, 1, 2, ChieftainBottom, CreateChieftainPhaseOneDeck(), 0, 0, 0.5f, CreateChieftainPhaseTwoDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free, HexEnemyIntentSlotKind.Free);
+                case "skeleton":
+                    return CreateEnemyDefinition(id, "骷髅", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, SkeletonBottom, Repeat((SkeletonStrike, 4), (SkeletonShamble, 3), (SkeletonShield, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                case "parasitic_vine":
+                    return CreateEnemyDefinition(id, "寄生藤蔓", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 0, VineBottom, Repeat((VineStrike, 3), (VineEntangle, 2), (VineSnare, 1), (VineCrawl, 2), (VineRoot, 2), (VineSpread, 1), (VineSporeSac, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                case "living_wall":
+                    return CreateEnemyDefinition(id, "活墙壁", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, WallBottom, Repeat((WallStab, 3), (WallRootStab, 1), (WallCrush, 2), (WallGrow, 2), (WallThickHide, 2), (WallRegenerate, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                case "gargoyle":
+                    return CreateEnemyDefinition(id, "石像鬼", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.Ranged, 1, 1, 2, GargoyleBottom, Repeat((GargoyleClaw, 3), (GargoyleDive, 2), (GargoyleStoneSkin, 2), (GargoyleHover, 2), (GargoyleGuard, 1), (GargoyleGaze, 1), (GargoyleRockfall, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free);
+                case "hellhound":
+                    return CreateEnemyDefinition(id, "地狱犬", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 1, HellhoundBottom, Repeat((HellhoundBite, 2), (HellhoundChainBite, 2), (HellhoundFlameFang, 2), (HellhoundCharge, 2), (HellhoundLickFire, 1), (HellhoundInstinct, 1), (HellhoundSniff, 1), (HellhoundEmber, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                case "mimic":
+                    return CreateEnemyDefinition(id, "宝箱怪", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.Fixed, 1, 1, 0, MimicBottom, Repeat((MimicFrenzy, 3), (MimicPounce, 2), (MimicShell, 2), (MimicReveal, 1), (MimicSticky, 1), (MimicGreed, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free);
+                case "mind_flayer":
+                    return CreateEnemyDefinition(id, "夺心魔", HexEnemyEncounterType.Boss, HexEnemyIntentPattern.Ranged, 1, 2, 0, MindBottom, Repeat((MindSteal, 2), (MindBlast, 2), (MindTentacles, 2), (MindLash, 4), (MindDrift, 2), (MindShield, 2), (MindObscure, 1)), 4, 8, 0.5f, Repeat((MindSteal, 2), (MindBlast, 2), (MindTentacles, 2), (MindExtract, 2), (MindLash, 2), (MindDrift, 2), (MindShield, 2), (MindObscure, 1)), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free, HexEnemyIntentSlotKind.Free);
+                case "mind_tentacle":
+                    return CreateEnemyDefinition(id, "心灵触手", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, null, new List<HexCardDefinition>(), 0, 0, 0f, null);
+                default:
+                    Debug.LogError($"Unknown enemy definition id: {id}");
+                    return null;
+            }
         }
 
         public static List<HexCardDefinition> CreateDruidStarterDeck()
@@ -1658,6 +1840,10 @@ namespace HexDemo
             int emptyDrawPileStrengthGain,
             HexCardDefinition bottomCard,
             List<HexCardDefinition> deck,
+            int maxSummons,
+            int summonHealth,
+            float phaseTwoHealthRatio,
+            List<HexCardDefinition> phaseTwoDeck,
             params HexEnemyIntentSlotKind[] slots)
         {
             int minRange = Mathf.Max(1, attackMinRange);
@@ -1682,8 +1868,12 @@ namespace HexDemo
                 attackMinRange = minRange,
                 attackMaxRange = maxRange,
                 emptyDrawPileStrengthGain = Mathf.Max(0, emptyDrawPileStrengthGain),
+                maxSummons = Mathf.Max(0, maxSummons),
+                summonHealth = Mathf.Max(0, summonHealth),
+                phaseTwoHealthRatio = Mathf.Clamp01(phaseTwoHealthRatio),
                 bottomCard = bottomCard,
                 deckDefinitions = deck ?? new List<HexCardDefinition>(),
+                phaseTwoDeckDefinitions = phaseTwoDeck ?? new List<HexCardDefinition>(),
                 intentSlots = slots != null ? new List<HexEnemyIntentSlotKind>(slots) : new List<HexEnemyIntentSlotKind>(),
             };
         }

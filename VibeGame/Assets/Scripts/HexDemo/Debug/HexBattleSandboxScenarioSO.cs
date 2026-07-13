@@ -7,6 +7,10 @@ namespace HexDemo
     [CreateAssetMenu(menuName = "HexDemo/Debug/Battle Sandbox Scenario", fileName = "BattleSandboxScenario")]
     public sealed class HexBattleSandboxScenarioSO : ScriptableObject
     {
+        public bool useFixedRandomSeed = true;
+        public int randomSeed = 1337;
+        public bool quickBottomCard;
+
         [Serializable]
         public sealed class TerrainOverride
         {

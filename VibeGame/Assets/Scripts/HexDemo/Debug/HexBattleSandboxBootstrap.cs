@@ -45,6 +45,9 @@ namespace HexDemo
                 return;
             }
 
+            if (scenario.useFixedRandomSeed)
+                Random.InitState(scenario.randomSeed);
+
             EnsureEventSystem();
 
             var root = new GameObject("BattleSandboxRuntime");
@@ -52,7 +55,7 @@ namespace HexDemo
             var battleCamera = EnsureBattleCamera(grid);
 
             var player = BuildPlayerUnit(root.transform, grid, scenario.player);
-            var enemies = BuildEnemyUnits(root.transform, grid, scenario.enemies, player.State.coord);
+            var enemies = BuildEnemyUnits(root.transform, grid, scenario.enemies, player.State.coord, scenario.quickBottomCard);
 
             var controllerGO = new GameObject("BattleController");
             controllerGO.transform.SetParent(root.transform, false);
@@ -140,7 +143,7 @@ namespace HexDemo
             return unit;
         }
 
-        private static List<HexBattleUnit> BuildEnemyUnits(Transform parent, HexGrid grid, List<HexBattleSandboxScenarioSO.EnemyConfig> configs, HexAxialCoord playerCoord)
+        private static List<HexBattleUnit> BuildEnemyUnits(Transform parent, HexGrid grid, List<HexBattleSandboxScenarioSO.EnemyConfig> configs, HexAxialCoord playerCoord, bool quickBottomCard)
         {
             var enemies = new List<HexBattleUnit>();
             if (configs == null)
@@ -150,12 +153,19 @@ namespace HexDemo
             {
                 var cfg = configs[i];
                 var enemyDef = HexCardLibrary.GetEnemyDefinition(cfg.enemyDefinitionId);
+                if (enemyDef == null)
+                {
+                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {cfg.enemyDefinitionId}");
+                    continue;
+                }
                 var desired = new HexAxialCoord(cfg.spawnCoord.x, cfg.spawnCoord.y);
                 var occupied = enemies.Select(e => e.State.coord).Append(playerCoord);
                 var spawn = HexBattleSetupUtility.FindClosestExistingCoord(grid, desired, occupied);
                 var deck = ResolveDeckFromIds(cfg.deckCardIds, HexCardProfession.Monster, false);
                 if (deck.Count == 0)
                     deck = enemyDef.deckDefinitions;
+                if (quickBottomCard && deck.Count > Mathf.Max(1, enemyDef.intentSlots.Count))
+                    deck = deck.Take(Mathf.Max(1, enemyDef.intentSlots.Count)).ToList();
 
                 var root = new GameObject($"Enemy_{i + 1}_{enemyDef.id}");
                 root.transform.SetParent(parent, false);
@@ -298,6 +308,13 @@ namespace HexDemo
                 "tribal_chieftain" => 60,
                 "goblin_captain" => 28,
                 "spear_goblin" => 14,
+                "skeleton" => 12,
+                "parasitic_vine" => 18,
+                "living_wall" => 34,
+                "gargoyle" => 36,
+                "hellhound" => 22,
+                "mimic" => 38,
+                "mind_flayer" => 90,
                 _ => 12,
             };
         }
@@ -329,8 +346,8 @@ namespace HexDemo
                 if (!coordSet.Add(enemy.spawnCoord))
                     Debug.LogWarning($"[BattleSandbox] Duplicate enemy spawn coord: {enemy.spawnCoord}");
 
-                if (HexCardLibrary.GetEnemyDefinition(enemy.enemyDefinitionId).id != enemy.enemyDefinitionId && !string.IsNullOrWhiteSpace(enemy.enemyDefinitionId))
-                    Debug.LogWarning($"[BattleSandbox] Unknown enemyDefinitionId, fallback will apply: {enemy.enemyDefinitionId}");
+                if (!string.IsNullOrWhiteSpace(enemy.enemyDefinitionId) && !HexCardLibrary.TryGetEnemyDefinition(enemy.enemyDefinitionId, out _))
+                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {enemy.enemyDefinitionId}");
 
                 if (enemy.deckCardIds == null)
                     continue;

@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: enemy_mind_flayer_bottom
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: enemy_mind_flayer_bottom
+  displayName: "\u5FC3\u7075\u5171\u632F"
+  cardType: 1
+  profession: 2
+  effectType: 8
+  targetType: 1
+  energyCost: 0
+  amount: 5
+  range: 0
+  castRange: 0
+  effectRadius: 0
+  priority: 2
+  rarity: Enemy
+  description: "\u5E95\u724C\uFF1A\u4E3B\u76EE\u6807\u5F03\u724C\u5806\u52A0\u51652\u5F20\u7729\u6655\uFF0C\u81EA\u8EAB\u83B7\u5F975\u683C\u6321\u3002"
+  color: {r: 0.48, g: 0.28, b: 0.68, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags:
+  - "\u5E95\u724C"

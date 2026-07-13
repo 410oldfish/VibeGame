@@ -19,13 +19,13 @@ MonoBehaviour:
   effectType: 0
   targetType: 1
   energyCost: 0
-  amount: 5
+  amount: 6
   range: 1
   castRange: 1
   effectRadius: 0
   priority: 1
   rarity: Enemy
-  description: "\u5BF9\u8DDD\u79BB1\u7684\u654C\u65B9\u5355\u4F4D\u9020\u62105\u70B9\u4F24\u5BB3\u3002"
+  description: "\u5BF9\u8DDD\u79BB1\u7684\u654C\u65B9\u5355\u4F4D\u9020\u62106\u70B9\u4F24\u5BB3\u3002"
   color: {r: 0.77, g: 0.3, b: 0.25, a: 1}
   isUnplayable: 0
   upgraded: 0

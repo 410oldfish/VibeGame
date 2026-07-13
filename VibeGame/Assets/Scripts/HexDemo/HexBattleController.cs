@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using StringComparer = System.StringComparer;
 using TEngine;
 using UnityEngine;
 
@@ -17,6 +18,8 @@ namespace HexDemo
 
     public sealed partial class HexBattleController : MonoBehaviour
     {
+        private delegate IEnumerator EnemySpecialHandler(HexBattleUnit enemy, HexBattleUnit target, HexCardInstance card);
+
         private sealed class ForcedMovementResult
         {
             public List<HexAxialCoord> path = new();
@@ -48,6 +51,8 @@ namespace HexDemo
         private bool _updateRegistered;
         private readonly List<HexCardPlayLogEntry> _playLog = new();
         private readonly Dictionary<HexBattleUnit, List<HexEnemyIntentSlot>> _enemyIntentSlots = new();
+        private readonly Dictionary<string, EnemySpecialHandler> _enemySpecialHandlers = new(StringComparer.OrdinalIgnoreCase);
+        private HexCardDefinition _lastPlayerMirrorCard;
         private HexBattleUnit _activeAttackPassiveSource;
         private HexCardInstance _activeAttackPassiveCard;
 
@@ -61,6 +66,7 @@ namespace HexDemo
             _playerUnit = playerUnit;
             InitializeConsumables(runState);
             _playerUnit.ResetBattleState();
+            RegisterEnemySpecialHandlers();
             _units.Clear();
             _units.Add(playerUnit);
             _enemyUnits.Clear();
@@ -87,6 +93,28 @@ namespace HexDemo
             GameEvent.Send(HexGameEvents.BattleStarted, this);
 
             BeginTurn(HexBattleFaction.Player);
+        }
+
+        private void RegisterEnemySpecialHandlers()
+        {
+            _enemySpecialHandlers.Clear();
+            string[] ids =
+            {
+                "enemy_goblin_roll", "enemy_spear_goblin_cover_retreat", "enemy_spear_goblin_volley",
+                "enemy_goblin_captain_net", "enemy_goblin_captain_warcry", "enemy_goblin_captain_rally",
+                "enemy_goblin_captain_shield_wall", "enemy_chieftain_charge", "enemy_chieftain_quake",
+                "enemy_chieftain_brace", "enemy_chieftain_drum", "enemy_vine_entangle", "enemy_vine_snare",
+                "enemy_vine_spread", "enemy_vine_spore_sac", "enemy_wall_root_stab", "enemy_wall_crush",
+                "enemy_wall_grow", "enemy_wall_regenerate", "enemy_gargoyle_dive", "enemy_gargoyle_stone_skin",
+                "enemy_gargoyle_guard", "enemy_gargoyle_gaze", "enemy_gargoyle_rockfall",
+                "enemy_hellhound_chain_bite", "enemy_hellhound_flame_fang", "enemy_hellhound_charge",
+                "enemy_hellhound_lick_fire", "enemy_hellhound_instinct", "enemy_hellhound_ember",
+                "enemy_mimic_frenzy", "enemy_mimic_pounce", "enemy_mimic_reveal", "enemy_mimic_sticky",
+                "enemy_mimic_greed", "enemy_mind_flayer_steal", "enemy_mind_flayer_blast",
+                "enemy_mind_flayer_tentacles", "enemy_mind_flayer_obscure",
+            };
+            for (int i = 0; i < ids.Length; i++)
+                _enemySpecialHandlers[ids[i]] = ResolveRegisteredEnemySpecialCard;
         }
 
         private void EnsureEnemyDefinition(HexBattleUnit enemy)
@@ -298,7 +326,7 @@ namespace HexDemo
                         {
                             slotKind = slot.slotKind,
                             slotLabel = HexBattleStatusDisplay.GetIntentSlotLabel(slot.slotKind),
-                            cardName = isEmpty ? string.Empty : slot.card.definition.displayName,
+                            cardName = isEmpty ? string.Empty : (enemy.State.enemyHiddenIntentSlotIndex == slotIndex ? "?" : slot.card.definition.displayName),
                             cardCost = isEmpty ? 0 : Mathf.Max(0, slot.card.definition.energyCost),
                             isEmpty = isEmpty,
                             executionOrder = order >= 0 ? order + 1 : slotIndex + 1,
@@ -668,6 +696,9 @@ namespace HexDemo
             card.ResetActionFlags();
             RecordCardPlay(source, target, card, targetedCoord);
             source.NotifyCardPlayed();
+            if (source == _playerUnit &&
+                (card.definition.cardType == HexCardType.Attack || card.definition.cardType == HexCardType.Skill))
+                _lastPlayerMirrorCard = card.definition;
             if (source == _playerUnit)
                 ExhaustHandCardsTriggeredByPlay(source, card);
             _ui?.ShowPlayedCard(source, card);
@@ -1396,9 +1427,30 @@ namespace HexDemo
                 yield break;
             }
 
+            yield return ResolveMindTentaclePhase();
+
             UpdateMovementHighlights();
             _ui.Refresh();
             StartCoroutine(RunEnemyTurn());
+        }
+
+        private IEnumerator ResolveMindTentaclePhase()
+        {
+            if (_playerUnit == null || !_playerUnit.IsAlive)
+                yield break;
+            int successfulPulls = 0;
+            var tentacles = _enemyUnits
+                .Where(unit => unit != null && unit.IsAlive && unit.State.enemyDefinitionId == "mind_tentacle")
+                .OrderBy(unit => unit.State.id, StringComparer.Ordinal)
+                .ToList();
+            for (int i = 0; i < tentacles.Count && successfulPulls < 3; i++)
+            {
+                var pull = ResolveForcedMovement(tentacles[i], _playerUnit, 1, true);
+                if (pull == null || pull.path.Count <= 1)
+                    continue;
+                yield return MoveUnitRoutine(_playerUnit, pull.path, 0);
+                successfulPulls++;
+            }
         }
 
         private IEnumerator RunEnemyTurn()
@@ -1463,6 +1515,7 @@ namespace HexDemo
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
+                TryApplyEnemyPhaseTwo(enemy);
                 enemy.Deck.DiscardHand();
                 DrawEnemyIntentCards(enemy);
                 enemy.RefreshLabel();
@@ -1476,8 +1529,15 @@ namespace HexDemo
 
             EnsureEnemyDefinition(enemy);
             var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            if (definition == null)
+            {
+                Debug.LogError($"Cannot draw intents for unknown enemy: {enemy.State.enemyDefinitionId}");
+                _enemyIntentSlots.Remove(enemy);
+                return;
+            }
             var slots = new List<HexEnemyIntentSlot>();
             enemy.Deck.DiscardHand();
+            enemy.State.enemyHiddenIntentSlotIndex = -1;
 
             for (int i = 0; i < definition.intentSlots.Count; i++)
             {
@@ -1509,6 +1569,24 @@ namespace HexDemo
             }
 
             _enemyIntentSlots[enemy] = slots;
+            if (slots.Any(slot => slot?.card?.definition?.id == "enemy_mind_flayer_obscure") && slots.Count > 1)
+                enemy.State.enemyHiddenIntentSlotIndex = Random.Range(0, slots.Count);
+        }
+
+        private void TryApplyEnemyPhaseTwo(HexBattleUnit enemy)
+        {
+            if (enemy?.State == null || enemy.State.enemyPhaseTwoApplied || enemy.State.maxHealth <= 0)
+                return;
+
+            var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            if (definition == null || definition.phaseTwoHealthRatio <= 0f || definition.phaseTwoDeckDefinitions == null || definition.phaseTwoDeckDefinitions.Count == 0)
+                return;
+            if ((float)enemy.State.currentHealth / enemy.State.maxHealth > definition.phaseTwoHealthRatio)
+                return;
+
+            enemy.State.enemyPhaseTwoApplied = true;
+            enemy.PrepareDeckForBattle(definition.phaseTwoDeckDefinitions);
+            Debug.Log($"{enemy.State.displayName} entered phase 2.");
         }
 
         private void ApplyWarriorBeginTurnPassives(HexBattleUnit unit)
@@ -1564,6 +1642,17 @@ namespace HexDemo
                 _ => null,
             };
 
+            System.Predicate<HexCardDefinition> allowedByCadence = definition =>
+                definition != null &&
+                (definition.id != "enemy_goblin_captain_warcry" || enemy.State.enemyTurnIndex - enemy.State.enemyLastWarcryTurn > 1);
+            if (predicate == null)
+                predicate = allowedByCadence;
+            else
+            {
+                var slotPredicate = predicate;
+                predicate = definition => slotPredicate(definition) && allowedByCadence(definition);
+            }
+
             if (predicate != null)
             {
                 var matched = enemy.Deck.DrawFirstMatchingToHand(predicate, out emptiedDrawPile);
@@ -1580,6 +1669,8 @@ namespace HexDemo
                 return new List<HexEnemyIntentSlot>();
 
             var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
+            if (definition == null)
+                return slots.ToList();
             var target = GetPrimaryEnemyTarget(enemy);
             bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
             if (definition.intentPattern == HexEnemyIntentPattern.Ranged)
@@ -1607,6 +1698,57 @@ namespace HexDemo
             definition ??= HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
             if (definition?.bottomCard != null)
             {
+                string bottomId = definition.bottomCard.id;
+                if (bottomId == "enemy_skeleton_bottom")
+                {
+                    enemy.State.currentHealth = Mathf.Max(1, enemy.State.currentHealth - 4);
+                    enemy.State.pendingStrengthNextTurn += 2;
+                    enemy.RefreshLabel();
+                    return;
+                }
+                if (bottomId == "enemy_vine_bottom")
+                {
+                    GetPrimaryEnemyTarget(enemy)?.ApplyBind(2);
+                    return;
+                }
+                if (bottomId == "enemy_wall_bottom")
+                {
+                    if (!TryPlaceBarrierNear(enemy, 1)) GainArmorWithFeedback(enemy, 5);
+                    return;
+                }
+                if (bottomId == "enemy_gargoyle_bottom")
+                {
+                    if (!TryPlaceBarrierNear(enemy, 1)) enemy.GainStrength(2);
+                    return;
+                }
+                if (bottomId == "enemy_hellhound_bottom")
+                {
+                    var target = GetPrimaryEnemyTarget(enemy);
+                    if (target != null)
+                    {
+                        ApplyAttackDamage(enemy, target, GetModifiedDamage(enemy, target, 5 + Mathf.Max(0, enemy.State.strength)));
+                        target.ApplyBurn(2);
+                    }
+                    enemy.GainStrength(1);
+                    return;
+                }
+                if (bottomId == "enemy_mimic_bottom")
+                {
+                    if (!PlaceRuinNear(enemy, 1, 4))
+                    {
+                        var target = GetPrimaryEnemyTarget(enemy);
+                        if (target != null) ApplyAttackDamage(enemy, target, 6);
+                    }
+                    return;
+                }
+                if (bottomId == "enemy_mind_flayer_bottom")
+                {
+                    var target = GetPrimaryEnemyTarget(enemy);
+                    if (target != null)
+                        for (int i = 0; i < 2; i++) target.Deck.AddToDiscardPile(HexCardLibrary.GetDaze());
+                    GainArmorWithFeedback(enemy, 5);
+                    return;
+                }
                 switch (definition.bottomCard.effectType)
                 {
                     case HexCardEffectType.PlaceRuin:
@@ -1646,7 +1788,12 @@ namespace HexDemo
             if (primaryTarget == null || !primaryTarget.IsAlive)
                 primaryTarget = _playerUnit;
 
-            if (card.definition.id == "enemy_chieftain_charge")
+            if (_enemySpecialHandlers.TryGetValue(card.definition.id, out var specialHandler))
+            {
+                yield return specialHandler(enemy, primaryTarget, card);
+                resolved = true;
+            }
+            else if (card.definition.id == "enemy_chieftain_charge")
             {
                 if (primaryTarget != null && primaryTarget.IsAlive)
                 {
@@ -1729,6 +1876,224 @@ namespace HexDemo
                 enemy.RefreshLabel();
                 _ui.Refresh();
             }
+        }
+
+        private IEnumerator ResolveRegisteredEnemySpecialCard(HexBattleUnit enemy, HexBattleUnit target, HexCardInstance card)
+        {
+            string id = card.definition.id;
+            switch (id)
+            {
+                case "enemy_goblin_roll":
+                    if (target != null)
+                        yield return ResolveEnemyIdealRangeMoveRoutine(enemy, target, 1);
+                    GainArmorWithFeedback(enemy, 5);
+                    break;
+                case "enemy_spear_goblin_cover_retreat":
+                    if (target != null)
+                        yield return ResolveRetreatRoutine(enemy, target, 1);
+                    GainArmorWithFeedback(enemy, HasAdjacentStructure(enemy, HexTerrainStructureType.Ruin) ? 7 : 4);
+                    break;
+                case "enemy_spear_goblin_volley":
+                    if (target != null && IsInEnemyAttackRange(enemy, target, HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId), card.definition))
+                        yield return ResolveDirectAttackRoutine(enemy, target, 3);
+                    break;
+                case "enemy_goblin_captain_net":
+                case "enemy_gargoyle_gaze":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= Mathf.Max(1, card.definition.castRange))
+                        target.ApplyBind(1);
+                    break;
+                case "enemy_goblin_captain_warcry":
+                    enemy.GainStrength(2);
+                    if (enemy.State.enemyTurnIndex - enemy.State.enemyLastWarcryTurn > 1)
+                    {
+                        TrySummonGoblinMinion(enemy);
+                        enemy.State.enemyLastWarcryTurn = enemy.State.enemyTurnIndex;
+                    }
+                    break;
+                case "enemy_goblin_captain_rally":
+                    if (!TrySummonGoblinMinion(enemy))
+                        enemy.GainStrength(1);
+                    break;
+                case "enemy_goblin_captain_shield_wall":
+                    GainArmorWithFeedback(enemy, 12);
+                    enemy.State.cannotBeKnockedBackThisTurn = true;
+                    break;
+                case "enemy_chieftain_charge":
+                    yield return ResolveEnemyChargeRoutine(enemy, target, 1, 6, true);
+                    break;
+                case "enemy_chieftain_quake":
+                    yield return ResolveChieftainQuakeRoutine(enemy, card);
+                    break;
+                case "enemy_chieftain_brace":
+                    enemy.GainToughness(2);
+                    break;
+                case "enemy_chieftain_drum":
+                    enemy.GainStrength(2);
+                    break;
+                case "enemy_vine_entangle":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                    {
+                        yield return ResolveDirectAttackRoutine(enemy, target, 3);
+                        if (target.IsAlive) target.ApplyBind(1);
+                    }
+                    break;
+                case "enemy_vine_snare":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 2)
+                    {
+                        bool alreadyBound = target.State.bind > 0;
+                        target.ApplyBind(1);
+                        if (alreadyBound)
+                        {
+                            var pull = ResolveForcedMovement(enemy, target, 1, true);
+                            if (pull != null && pull.path.Count > 1)
+                                yield return MoveUnitRoutine(target, pull.path, 0);
+                        }
+                    }
+                    break;
+                case "enemy_vine_spread":
+                    enemy.State.enemySpreadActiveThisTurn = true;
+                    break;
+                case "enemy_vine_spore_sac":
+                    PlaceRuinNear(enemy, 1, 3);
+                    break;
+                case "enemy_wall_root_stab":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                        yield return ResolveDirectAttackRoutine(enemy, target, 4 + (target.State.bind > 0 ? 3 : 0));
+                    break;
+                case "enemy_wall_crush":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                        yield return ResolveDirectAttackRoutine(enemy, target, 3, knockback: 1);
+                    break;
+                case "enemy_wall_grow":
+                case "enemy_gargoyle_rockfall":
+                    TryPlaceBarrierNear(enemy, 1);
+                    break;
+                case "enemy_wall_regenerate":
+                    enemy.Heal(3);
+                    break;
+                case "enemy_gargoyle_dive":
+                    yield return ResolveEnemyChargeRoutine(enemy, target, 2, 8, false);
+                    break;
+                case "enemy_gargoyle_stone_skin":
+                    GainArmorWithFeedback(enemy, HasAdjacentStructure(enemy, HexTerrainStructureType.Barrier) ? 12 : 8);
+                    break;
+                case "enemy_gargoyle_guard":
+                    enemy.State.enemyDamageReductionActive = true;
+                    break;
+                case "enemy_hellhound_chain_bite":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                        for (int i = 0; i < 3 && target.IsAlive; i++)
+                            yield return ResolveDirectAttackRoutine(enemy, target, 3);
+                    break;
+                case "enemy_hellhound_flame_fang":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                    {
+                        yield return ResolveDirectAttackRoutine(enemy, target, 4);
+                        if (target.IsAlive) target.ApplyBurn(2);
+                    }
+                    break;
+                case "enemy_hellhound_charge":
+                    yield return ResolveEnemyChargeRoutine(enemy, target, 2, 6, false);
+                    break;
+                case "enemy_hellhound_lick_fire":
+                    enemy.Heal(5);
+                    enemy.ApplyBurn(1);
+                    break;
+                case "enemy_hellhound_instinct":
+                    enemy.State.enemyIgnitionPassive = true;
+                    break;
+                case "enemy_hellhound_ember":
+                    PlaceTemporaryObstaclesAround(enemy, 1, 2);
+                    break;
+                case "enemy_mimic_frenzy":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                        for (int i = 0; i < 2 && target.IsAlive; i++)
+                            yield return ResolveDirectAttackRoutine(enemy, target, 4);
+                    break;
+                case "enemy_mimic_pounce":
+                    yield return ResolveEnemyChargeRoutine(enemy, target, 2, 7, false);
+                    break;
+                case "enemy_mimic_reveal":
+                    enemy.GainStrength(2);
+                    break;
+                case "enemy_mimic_sticky":
+                    if (target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                    {
+                        yield return ResolveDirectAttackRoutine(enemy, target, 3);
+                        if (target.IsAlive) target.ApplyBind(1);
+                    }
+                    break;
+                case "enemy_mimic_greed":
+                    enemy.State.enemySpreadActiveThisTurn = true;
+                    break;
+                case "enemy_mind_flayer_steal":
+                    if (target != null && _lastPlayerMirrorCard != null)
+                    {
+                        if (_lastPlayerMirrorCard.cardType == HexCardType.Attack)
+                            yield return ResolveDirectAttackRoutine(enemy, target, Mathf.Max(0, _lastPlayerMirrorCard.amount));
+                        else if (_lastPlayerMirrorCard.effectType == HexCardEffectType.Defend)
+                            GainArmorWithFeedback(enemy, Mathf.Max(0, _lastPlayerMirrorCard.amount));
+                    }
+                    break;
+                case "enemy_mind_flayer_blast":
+                    if (target != null)
+                    {
+                        yield return ResolveDirectAttackRoutine(enemy, target, 20);
+                        for (int i = 0; i < 3; i++) target.Deck.AddToDiscardPile(HexCardLibrary.GetDaze());
+                    }
+                    break;
+                case "enemy_mind_flayer_tentacles":
+                    int summoned = 0;
+                    while (summoned < 2 && TrySummonEnemy(enemy, "mind_tentacle", 8, 4)) summoned++;
+                    if (summoned < 2) GainArmorWithFeedback(enemy, (2 - summoned) * 3);
+                    break;
+                case "enemy_mind_flayer_obscure":
+                    break;
+            }
+
+            enemy.RefreshLabel();
+            _ui?.Refresh();
+        }
+
+        private IEnumerator ResolveEnemyChargeRoutine(HexBattleUnit enemy, HexBattleUnit target, int maxSteps, int damage, bool stunOnBlocked)
+        {
+            if (enemy == null || target == null || !target.IsAlive)
+                yield break;
+            var path = FindBestApproachPath(enemy, target.State.coord, 1);
+            if (path == null || path.Count < 2)
+            {
+                if (stunOnBlocked) enemy.ApplyStun(1);
+                yield break;
+            }
+
+            int takeCount = Mathf.Min(path.Count, Mathf.Max(1, maxSteps) + 1);
+            yield return MoveUnitRoutine(enemy, path.Take(takeCount).ToList(), 0, target.State.coord);
+            if (HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
+                yield return ResolveDirectAttackRoutine(enemy, target, damage);
+            else if (stunOnBlocked)
+                enemy.ApplyStun(1);
+        }
+
+        private bool HasAdjacentStructure(HexBattleUnit unit, HexTerrainStructureType type)
+        {
+            if (unit == null || grid == null)
+                return false;
+            return grid.GetNeighbors(unit.State.coord).Any(coord =>
+                grid.TryGetTile(coord, out var tile) && tile != null && tile.structureType == type);
+        }
+
+        private bool TryPlaceBarrierNear(HexBattleUnit source, int radius)
+        {
+            if (source == null || grid == null)
+                return false;
+            var candidates = HexBattlePathing.GetCoordsInRange(source.State.coord, Mathf.Max(1, radius))
+                .Where(coord => !coord.Equals(source.State.coord) && grid.TryGetTile(coord, out var tile) && tile != null && TileCanEnter(tile) && !IsOccupied(coord, source))
+                .OrderBy(_ => Random.value).ToList();
+            if (candidates.Count == 0 || !grid.TryGetTile(candidates[0], out var chosen) || chosen == null)
+                return false;
+            chosen.SetStructure(HexTerrainStructureType.Barrier);
+            chosen.FlashClick();
+            return true;
         }
 
         private IEnumerator TryEnemyMove(HexBattleUnit enemy, HexBattleUnit player)
@@ -4339,23 +4704,30 @@ namespace HexDemo
 
         private bool TrySummonGoblinMinion(HexBattleUnit source)
         {
-            if (source == null || grid == null)
+            var ownerDefinition = source != null ? HexCardLibrary.GetEnemyDefinition(source.State.enemyDefinitionId) : null;
+            int maxSummons = ownerDefinition?.maxSummons > 0 ? ownerDefinition.maxSummons : 2;
+            int health = ownerDefinition?.summonHealth > 0 ? ownerDefinition.summonHealth : 15;
+            return TrySummonEnemy(source, "goblin", health, maxSummons);
+        }
+
+        private bool TrySummonEnemy(HexBattleUnit source, string definitionId, int health, int maxSummons)
+        {
+            if (source == null || grid == null || string.IsNullOrWhiteSpace(definitionId))
+                return false;
+            int ownedSummons = _enemyUnits.Count(unit => unit != null && unit.IsAlive && unit.State.isSummonedEnemy && unit.State.summonOwnerId == source.State.id && unit.State.enemyDefinitionId == definitionId);
+            if (maxSummons > 0 && ownedSummons >= maxSummons)
                 return false;
 
+            var definition = HexCardLibrary.GetEnemyDefinition(definitionId);
+            if (definition == null)
+                return false;
             var candidates = HexBattlePathing.GetCoordsInRange(source.State.coord, 2)
-                .Where(coord => !coord.Equals(source.State.coord) &&
-                                grid.TryGetTile(coord, out var tile) &&
-                                tile != null &&
-                                TileCanEnter(tile) &&
-                                !IsOccupied(coord, source))
-                .OrderBy(coord => HexAxialCoord.Distance(source.State.coord, coord))
-                .ThenBy(_ => Random.value)
-                .ToList();
+                .Where(coord => !coord.Equals(source.State.coord) && grid.TryGetTile(coord, out var tile) && tile != null && TileCanEnter(tile) && !IsOccupied(coord, source))
+                .OrderBy(coord => HexAxialCoord.Distance(source.State.coord, coord)).ThenBy(_ => Random.value).ToList();
             if (candidates.Count == 0)
                 return false;
 
-            var definition = HexCardLibrary.GetEnemyDefinition("goblin");
-            var summonRoot = new GameObject($"SummonedGoblin_{_enemyUnits.Count + 1}");
+            var summonRoot = new GameObject($"Summoned_{definitionId}_{_enemyUnits.Count + 1}");
             summonRoot.transform.SetParent(source.transform.parent != null ? source.transform.parent : transform, false);
             var summoned = summonRoot.AddComponent<HexBattleUnit>();
             summoned.Initialize(new HexBattleUnitState
@@ -4364,8 +4736,8 @@ namespace HexDemo
                 displayName = definition.displayName,
                 enemyDefinitionId = definition.id,
                 faction = HexBattleFaction.Enemy,
-                maxHealth = 12,
-                currentHealth = 12,
+                maxHealth = Mathf.Max(1, health),
+                currentHealth = Mathf.Max(1, health),
                 armor = 0,
                 energy = 0,
                 maxEnergy = 0,
@@ -4374,6 +4746,8 @@ namespace HexDemo
                 currentMovePoints = 0,
                 attackRange = definition.attackMaxRange,
                 emptyDrawPileStrengthGain = definition.emptyDrawPileStrengthGain,
+                isSummonedEnemy = true,
+                summonOwnerId = source.State.id,
                 coord = candidates[0],
             }, null, definition.deckDefinitions);
             summoned.SnapTo(grid, unitYOffset);
@@ -4812,8 +5186,18 @@ namespace HexDemo
             }
             if (target.State.block > 0)
                 amount = Mathf.Max(0, amount - target.State.block);
+            if (target.State.enemyDamageReductionActive && HasAdjacentStructure(target, HexTerrainStructureType.Barrier))
+                amount = Mathf.CeilToInt(amount * 0.75f);
 
             ApplyDamageWithFeedback(target, amount, source);
+
+            if (source != null && source.State.enemyIgnitionPassive && target.IsAlive && Random.value < 0.5f)
+                target.ApplyBurn(1);
+            if (source != null && source.State.enemySpreadActiveThisTurn && target.IsAlive && HasAdjacentStructure(target, HexTerrainStructureType.Ruin))
+                target.ApplyBind(1);
+            if (!target.IsAlive && target.State.enemyDefinitionId == "mimic" && target.State.enemySpreadActiveThisTurn &&
+                grid != null && grid.TryGetTile(target.State.coord, out var deathTile) && deathTile != null)
+                deathTile.SetProp(HexPropLibrary.DefaultRuinPropId, 4);
 
             if (target.State.blastBarrelDamage > 0 && amount > 0)
             {
@@ -5349,6 +5733,16 @@ namespace HexDemo
         {
             if (grid == null || source == null || target == null || distance <= 0)
                 return null;
+            if (target.State.toughness > 0 || target.State.cannotBeKnockedBackThisTurn)
+            {
+                return new ForcedMovementResult
+                {
+                    path = new List<HexAxialCoord> { target.State.coord },
+                    intendedDestination = target.State.coord,
+                    actualDestination = target.State.coord,
+                    collided = true,
+                };
+            }
 
             HexAxialCoord start = target.State.coord;
             int directionIndex = moveTowardSource

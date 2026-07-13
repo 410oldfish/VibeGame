@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf63922b91d736046bcd101d46b08c66, type: 3}
+  m_Name: tribal_chieftain
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexEnemyDefinitionSO
+  id: tribal_chieftain
+  displayName: "\u90E8\u843D\u914B\u957F"
+  encounterType: 2
+  intentPattern: 1
+  attackMinRange: 1
+  attackMaxRange: 1
+  emptyDrawPileStrengthGain: 2
+  maxSummons: 0
+  summonHealth: 0
+  phaseTwoHealthRatio: 0.5
+  intentSlots: 00000000010000000200000002000000
+  deckCardIds:
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_charge
+  - enemy_chieftain_charge
+  - enemy_chieftain_charge
+  - enemy_chieftain_brace
+  - enemy_chieftain_brace
+  - enemy_chieftain_drum
+  - enemy_chieftain_drum
+  - enemy_goblin_approach
+  - enemy_goblin_approach
+  phaseTwoDeckCardIds:
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_heavy_strike
+  - enemy_chieftain_charge
+  - enemy_chieftain_charge
+  - enemy_chieftain_charge
+  - enemy_chieftain_brace
+  - enemy_chieftain_brace
+  - enemy_chieftain_drum
+  - enemy_chieftain_drum
+  - enemy_chieftain_quake
+  - enemy_chieftain_quake
+  bottomCardId: enemy_chieftain_bottom

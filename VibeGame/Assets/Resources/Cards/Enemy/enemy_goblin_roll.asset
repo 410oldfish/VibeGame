@@ -16,7 +16,7 @@ MonoBehaviour:
   displayName: "\u7FFB\u6EDA"
   cardType: 1
   profession: 2
-  effectType: 2
+  effectType: 3
   targetType: 1
   energyCost: 0
   amount: 1
@@ -25,7 +25,7 @@ MonoBehaviour:
   effectRadius: 0
   priority: 2
   rarity: Enemy
-  description: "\u671D\u654C\u65B9\u5355\u4F4D\u79FB\u52A81\u8DDD\u79BB\uFF0C\u83B7\u5F975\u683C\u6321\u3002"
+  description: "\u6309\u7406\u60F3\u653B\u51FB\u8DDD\u79BB\u76F8\u5BF9\u76EE\u6807\u79FB\u52A81\u683C\uFF0C\u83B7\u5F975\u683C\u6321\u3002"
   color: {r: 0.35, g: 0.62, b: 0.42, a: 1}
   isUnplayable: 0
   upgraded: 0

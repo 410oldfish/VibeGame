@@ -137,6 +137,15 @@ namespace HexDemo
             State.frozen = 0;
             State.strength = 0;
             State.toughness = 0;
+            State.enemyTurnIndex = 0;
+            State.enemyLastWarcryTurn = -99;
+            State.enemyPhaseTwoApplied = false;
+            State.cannotBeKnockedBackThisTurn = false;
+            State.pendingStrengthNextTurn = 0;
+            State.enemyDamageReductionActive = false;
+            State.enemyIgnitionPassive = false;
+            State.enemySpreadActiveThisTurn = false;
+            State.enemyHiddenIntentSlotIndex = -1;
             State.agility = 0;
             State.wisdom = 0;
             State.humility = 0;
@@ -254,6 +263,15 @@ namespace HexDemo
         public void BeginTurn()
         {
             CanActThisTurn = true;
+            State.cannotBeKnockedBackThisTurn = false;
+            State.enemySpreadActiveThisTurn = false;
+            if (State.faction == HexBattleFaction.Enemy)
+                State.enemyTurnIndex++;
+            if (State.pendingStrengthNextTurn > 0)
+            {
+                GainStrength(State.pendingStrengthNextTurn);
+                State.pendingStrengthNextTurn = 0;
+            }
             if (State.armor > 0 && !State.retainArmorBetweenTurns)
             {
                 State.armor = 0;

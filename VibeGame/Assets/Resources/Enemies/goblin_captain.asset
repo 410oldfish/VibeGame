@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf63922b91d736046bcd101d46b08c66, type: 3}
+  m_Name: goblin_captain
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexEnemyDefinitionSO
+  id: goblin_captain
+  displayName: "\u54E5\u5E03\u6797\u961F\u957F"
+  encounterType: 1
+  intentPattern: 1
+  attackMinRange: 1
+  attackMaxRange: 1
+  emptyDrawPileStrengthGain: 1
+  maxSummons: 2
+  summonHealth: 15
+  phaseTwoHealthRatio: 0
+  intentSlots: 000000000100000002000000
+  deckCardIds:
+  - enemy_goblin_strike
+  - enemy_goblin_strike
+  - enemy_goblin_strike
+  - enemy_goblin_approach
+  - enemy_goblin_approach
+  - enemy_goblin_approach
+  - enemy_goblin_captain_net
+  - enemy_goblin_captain_net
+  - enemy_goblin_captain_warcry
+  - enemy_goblin_captain_warcry
+  - enemy_goblin_captain_guard
+  - enemy_goblin_captain_guard
+  - enemy_goblin_captain_rally
+  - enemy_goblin_captain_shield_wall
+  phaseTwoDeckCardIds: []
+  bottomCardId: enemy_goblin_captain_bottom

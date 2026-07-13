@@ -505,6 +505,12 @@ namespace HexDemo
                 var enemyCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)], enemyUnits.Select(unit => unit.State.coord).Append(playerCoord));
                 string enemyDefinitionId = GetEncounterEnemyDefinitionId(i, nodeType);
                 var enemyDefinition = HexCardLibrary.GetEnemyDefinition(enemyDefinitionId);
+                if (enemyDefinition == null)
+                {
+                    Debug.LogError($"Unknown encounter enemyDefinitionId: {enemyDefinitionId}");
+                    Destroy(enemyRoot);
+                    continue;
+                }
                 enemyUnit.Initialize(new HexBattleUnitState
                 {
                     id = $"enemy_{i + 1}",

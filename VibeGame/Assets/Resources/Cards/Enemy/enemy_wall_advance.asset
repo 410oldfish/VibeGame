@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56a2e2f090f9f9f4eadef8f4641441ad, type: 3}
+  m_Name: enemy_wall_advance
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardDefinitionSO
+  id: enemy_wall_advance
+  displayName: "\u63A8\u8FDB"
+  cardType: 5
+  profession: 2
+  effectType: 8
+  targetType: 0
+  energyCost: 0
+  amount: 1
+  range: 0
+  castRange: 0
+  effectRadius: 0
+  priority: 0
+  rarity: Enemy
+  description: "\u6574\u9762\u5899\u5411\u5BF9\u5411\u5899\u6216\u73A9\u5BB6\u63A8\u8FDB1\u683C\uFF0C\u5E76\u51FB\u9000\u8DEF\u5F84\u4E0A\u7684\u654C\u65B9\u3002"
+  color: {r: 0.42, g: 0.58, b: 0.28, a: 1}
+  isUnplayable: 0
+  upgraded: 0
+  tags: []
