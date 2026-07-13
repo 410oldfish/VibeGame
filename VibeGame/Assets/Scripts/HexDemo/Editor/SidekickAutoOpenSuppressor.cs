@@ -37,8 +37,17 @@ namespace HexDemo.Editor
                                         typeName == "Synty.SidekickCharacters.ToolDownloader" ||
                                         title == "Sidekick Character Tool" ||
                                         title == "Sidekick Tool Downloader";
-                if (isSidekickWindow)
+                if (!isSidekickWindow)
+                    continue;
+
+                try
+                {
                     window.Close();
+                }
+                catch (System.NullReferenceException)
+                {
+                    // The Synty window can destroy its backing GUI object during Close().
+                }
             }
         }
     }
