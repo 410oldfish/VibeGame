@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a9d6eef3609574a429f4d73131564263, type: 3}
-  m_Name: BattleSandbox_Default
+  m_Name: BattleSandbox_TribalChieftain_Phase2
   m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexBattleSandboxScenarioSO
   useFixedRandomSeed: 1
-  randomSeed: 1337
-  quickBottomCard: 0
+  randomSeed: 4402
+  quickBottomCard: 1
   terrain:
     width: 11
     height: 11
@@ -30,7 +30,7 @@ MonoBehaviour:
       zone: 0
       baseTerrain: 0
       structureType: 1
-      propId: ''
+      propId:
       structureHp: 0
       pickupType: 0
       pickupAmount: 0
@@ -38,7 +38,7 @@ MonoBehaviour:
       zone: 0
       baseTerrain: 0
       structureType: 2
-      propId: ''
+      propId:
       structureHp: 3
       pickupType: 0
       pickupAmount: 0
@@ -63,19 +63,11 @@ MonoBehaviour:
     - warrior_defend
     - warrior_move_forward
   enemies:
-  - enemyType: 0
-    legacyEnemyDefinitionId: ''
-    displayNameOverride: 
+  - enemyType: 3
+    legacyEnemyDefinitionId:
+    displayNameOverride:
     spawnCoord: {x: 7, y: 5}
     livingWallPartnerSpawnCoord: {x: 3, y: 5}
-    maxHealthOverride: -1
-    currentHealthOverride: -1
-    deckCardIds: []
-  - enemyType: 1
-    legacyEnemyDefinitionId: ''
-    displayNameOverride: 
-    spawnCoord: {x: 7, y: 4}
-    livingWallPartnerSpawnCoord: {x: 3, y: 5}
-    maxHealthOverride: -1
-    currentHealthOverride: -1
+    maxHealthOverride: 100
+    currentHealthOverride: 50
     deckCardIds: []

@@ -152,52 +152,131 @@ namespace HexDemo
             for (int i = 0; i < configs.Count; i++)
             {
                 var cfg = configs[i];
-                var enemyDef = HexCardLibrary.GetEnemyDefinition(cfg.enemyDefinitionId);
+                if (cfg == null)
+                    continue;
+                string definitionId = cfg.DefinitionId;
+                var enemyDef = HexCardLibrary.GetEnemyDefinition(definitionId);
                 if (enemyDef == null)
                 {
-                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {cfg.enemyDefinitionId}");
+                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {definitionId}");
                     continue;
                 }
-                var desired = new HexAxialCoord(cfg.spawnCoord.x, cfg.spawnCoord.y);
-                var occupied = enemies.Select(e => e.State.coord).Append(playerCoord);
-                var spawn = HexBattleSetupUtility.FindClosestExistingCoord(grid, desired, occupied);
                 var deck = ResolveDeckFromIds(cfg.deckCardIds, HexCardProfession.Monster, false);
                 if (deck.Count == 0)
                     deck = enemyDef.deckDefinitions;
                 if (quickBottomCard && deck.Count > Mathf.Max(1, enemyDef.intentSlots.Count))
                     deck = deck.Take(Mathf.Max(1, enemyDef.intentSlots.Count)).ToList();
 
-                var root = new GameObject($"Enemy_{i + 1}_{enemyDef.id}");
-                root.transform.SetParent(parent, false);
-                var animator = SpawnCharacterModel(root.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab());
-                var unit = root.AddComponent<HexBattleUnit>();
-
                 int maxHealth = cfg.maxHealthOverride > 0 ? cfg.maxHealthOverride : GetDefaultEnemyHealth(enemyDef.id);
                 int currentHealth = cfg.currentHealthOverride > 0 ? Mathf.Min(cfg.currentHealthOverride, maxHealth) : maxHealth;
-                unit.Initialize(new HexBattleUnitState
+                if (cfg.enemyType == HexSandboxEnemyType.LivingWall)
                 {
-                    id = $"sandbox_enemy_{i + 1}",
-                    displayName = string.IsNullOrWhiteSpace(cfg.displayNameOverride) ? enemyDef.displayName : cfg.displayNameOverride,
-                    enemyDefinitionId = enemyDef.id,
-                    faction = HexBattleFaction.Enemy,
-                    maxHealth = maxHealth,
-                    currentHealth = Mathf.Max(1, currentHealth),
-                    armor = 0,
-                    energy = 0,
-                    maxEnergy = 0,
-                    drawPerTurn = 0,
-                    maxMovePoints = 0,
-                    currentMovePoints = 0,
-                    attackRange = enemyDef.attackMaxRange,
-                    emptyDrawPileStrengthGain = enemyDef.emptyDrawPileStrengthGain,
-                    coord = spawn,
-                }, animator, deck);
+                    var firstCore = new HexAxialCoord(cfg.spawnCoord.x, cfg.spawnCoord.y);
+                    var secondCore = new HexAxialCoord(cfg.livingWallPartnerSpawnCoord.x, cfg.livingWallPartnerSpawnCoord.y);
+                    var firstOffsets = HexLivingWallRules.CreateInitialOffsets(grid, firstCore, secondCore);
+                    var secondOffsets = HexLivingWallRules.CreateInitialOffsets(grid, secondCore, firstCore);
+                    if (!CanSpawnLivingWall(grid, firstCore, firstOffsets, enemies, playerCoord) ||
+                        !CanSpawnLivingWall(grid, secondCore, secondOffsets, enemies, playerCoord) ||
+                        BuildWallCoords(firstCore, firstOffsets).Intersect(BuildWallCoords(secondCore, secondOffsets)).Any())
+                    {
+                        Debug.LogError($"[BattleSandbox] Invalid living wall pair spawn: {firstCore} / {secondCore}");
+                        continue;
+                    }
 
-                unit.SnapTo(grid, 0.03f);
-                enemies.Add(unit);
+                    string firstId = $"sandbox_enemy_{i + 1}_wall_a";
+                    string secondId = $"sandbox_enemy_{i + 1}_wall_b";
+                    string baseName = string.IsNullOrWhiteSpace(cfg.displayNameOverride) ? enemyDef.displayName : cfg.displayNameOverride;
+                    var first = BuildEnemyUnit(parent, grid, enemyDef, deck, firstId, $"{baseName} A", firstCore, maxHealth, currentHealth,
+                        new HexLivingWallRuntimeState
+                        {
+                            spawnOrder = i * 2,
+                            pairedWallId = secondId,
+                            footprintOffsets = firstOffsets,
+                        });
+                    var second = BuildEnemyUnit(parent, grid, enemyDef, deck, secondId, $"{baseName} B", secondCore, maxHealth, currentHealth,
+                        new HexLivingWallRuntimeState
+                        {
+                            spawnOrder = i * 2 + 1,
+                            pairedWallId = firstId,
+                            footprintOffsets = secondOffsets,
+                        });
+                    enemies.Add(first);
+                    enemies.Add(second);
+                    continue;
+                }
+
+                var desired = new HexAxialCoord(cfg.spawnCoord.x, cfg.spawnCoord.y);
+                var occupied = enemies.SelectMany(e => e.OccupiedCoords).Append(playerCoord);
+                var spawn = HexBattleSetupUtility.FindClosestExistingCoord(grid, desired, occupied);
+                string displayName = string.IsNullOrWhiteSpace(cfg.displayNameOverride) ? enemyDef.displayName : cfg.displayNameOverride;
+                enemies.Add(BuildEnemyUnit(parent, grid, enemyDef, deck, $"sandbox_enemy_{i + 1}", displayName, spawn, maxHealth, currentHealth, null));
             }
 
             return enemies;
+        }
+
+        private static HexBattleUnit BuildEnemyUnit(
+            Transform parent,
+            HexGrid grid,
+            HexEnemyDefinition enemyDef,
+            IReadOnlyList<HexCardDefinition> deck,
+            string id,
+            string displayName,
+            HexAxialCoord spawn,
+            int maxHealth,
+            int currentHealth,
+            HexLivingWallRuntimeState livingWall)
+        {
+            var root = new GameObject($"Enemy_{id}_{enemyDef.id}");
+            root.transform.SetParent(parent, false);
+            Animator animator = livingWall == null
+                ? SpawnCharacterModel(root.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab())
+                : null;
+            var unit = root.AddComponent<HexBattleUnit>();
+            unit.Initialize(new HexBattleUnitState
+            {
+                id = id,
+                displayName = displayName,
+                enemyDefinitionId = enemyDef.id,
+                faction = HexBattleFaction.Enemy,
+                maxHealth = maxHealth,
+                currentHealth = Mathf.Max(1, currentHealth),
+                attackRange = enemyDef.attackMaxRange,
+                enemyAttackMinRange = enemyDef.attackMinRange,
+                enemyAttackMaxRange = enemyDef.attackMaxRange,
+                emptyDrawPileStrengthGain = enemyDef.emptyDrawPileStrengthGain,
+                coord = spawn,
+                livingWall = livingWall,
+            }, animator, deck);
+            unit.SnapTo(grid, 0.03f);
+            if (livingWall != null)
+                unit.AttachLivingWallView(grid);
+            return unit;
+        }
+
+        private static bool CanSpawnLivingWall(
+            HexGrid grid,
+            HexAxialCoord core,
+            IReadOnlyList<HexAxialCoord> offsets,
+            IReadOnlyList<HexBattleUnit> existing,
+            HexAxialCoord playerCoord)
+        {
+            var existingCoords = new HashSet<HexAxialCoord>(existing.SelectMany(unit => unit.OccupiedCoords));
+            foreach (HexAxialCoord coord in BuildWallCoords(core, offsets))
+            {
+                if (coord.Equals(playerCoord) || existingCoords.Contains(coord) ||
+                    !grid.TryGetTile(coord, out var tile) || tile == null ||
+                    tile.zone == HexTerrainZoneType.Pit || tile.structureType != HexTerrainStructureType.None ||
+                    tile.pickupType != HexTerrainPickupType.None)
+                    return false;
+            }
+            return true;
+        }
+
+        private static IEnumerable<HexAxialCoord> BuildWallCoords(HexAxialCoord core, IReadOnlyList<HexAxialCoord> offsets)
+        {
+            for (int i = 0; i < offsets.Count; i++)
+                yield return HexLivingWallRules.ToWorldCoord(core, offsets[i]);
         }
 
         private static List<HexCardDefinition> ResolveDeckFromIds(List<string> ids, HexCardProfession fallbackProfession, bool allowStarterFallback)
@@ -346,8 +425,9 @@ namespace HexDemo
                 if (!coordSet.Add(enemy.spawnCoord))
                     Debug.LogWarning($"[BattleSandbox] Duplicate enemy spawn coord: {enemy.spawnCoord}");
 
-                if (!string.IsNullOrWhiteSpace(enemy.enemyDefinitionId) && !HexCardLibrary.TryGetEnemyDefinition(enemy.enemyDefinitionId, out _))
-                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {enemy.enemyDefinitionId}");
+                string definitionId = enemy.DefinitionId;
+                if (!string.IsNullOrWhiteSpace(definitionId) && !HexCardLibrary.TryGetEnemyDefinition(definitionId, out _))
+                    Debug.LogError($"[BattleSandbox] Unknown enemyDefinitionId: {definitionId}");
 
                 if (enemy.deckCardIds == null)
                     continue;

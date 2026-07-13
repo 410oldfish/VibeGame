@@ -70,6 +70,28 @@ namespace HexDemo
         public HexAxialCoord TargetCoord => State != null ? State.coord : default;
         public bool IsAttackTargetValid => IsAlive;
         public HexAttackTargetKind AttackTargetKind => HexAttackTargetKind.Unit;
+        public bool IsLivingWall => State?.livingWall != null;
+        public int FootprintSize => State?.livingWall?.footprintOffsets?.Count ?? (State != null ? 1 : 0);
+        public IReadOnlyList<HexAxialCoord> OccupiedCoords
+        {
+            get
+            {
+                _occupiedCoords.Clear();
+                if (State == null)
+                    return _occupiedCoords;
+
+                var offsets = State.livingWall?.footprintOffsets;
+                if (offsets == null || offsets.Count == 0)
+                {
+                    _occupiedCoords.Add(State.coord);
+                    return _occupiedCoords;
+                }
+
+                for (int i = 0; i < offsets.Count; i++)
+                    _occupiedCoords.Add(new HexAxialCoord(State.coord.q + offsets[i].q, State.coord.r + offsets[i].r));
+                return _occupiedCoords;
+            }
+        }
 
         private Animator _animator;
         private CapsuleCollider _targetCollider;
@@ -87,6 +109,8 @@ namespace HexDemo
         private static readonly Dictionary<StatusIconKind, Sprite> s_statusIconSprites = new();
         private Renderer[] _modelRenderers = System.Array.Empty<Renderer>();
         private bool _deathVisualConsumed;
+        private readonly List<HexAxialCoord> _occupiedCoords = new();
+        private HexLivingWallView _livingWallView;
         public bool CanActThisTurn { get; private set; } = true;
 
         public void Initialize(HexBattleUnitState state, Animator animator, IEnumerable<HexCardDefinition> startingDeck)
@@ -99,6 +123,46 @@ namespace HexDemo
             EnsureHealthBar();
             CacheModelRenderers();
             RefreshHealthBar();
+        }
+
+        public bool Occupies(HexAxialCoord coord)
+        {
+            var occupied = OccupiedCoords;
+            for (int i = 0; i < occupied.Count; i++)
+                if (occupied[i].Equals(coord))
+                    return true;
+            return false;
+        }
+
+        public void AttachLivingWallView(HexGrid grid)
+        {
+            if (!IsLivingWall || grid == null)
+                return;
+
+            transform.rotation = Quaternion.identity;
+            _livingWallView = GetComponent<HexLivingWallView>();
+            if (_livingWallView == null)
+                _livingWallView = gameObject.AddComponent<HexLivingWallView>();
+            _livingWallView.Initialize(this, grid);
+            if (_targetCollider != null)
+                _targetCollider.enabled = false;
+            CacheModelRenderers();
+        }
+
+        public void RefreshLivingWallView()
+        {
+            _livingWallView?.Rebuild();
+            RefreshHealthBar();
+        }
+
+        public void SyncLivingWallView()
+        {
+            _livingWallView?.SyncToOwner();
+        }
+
+        public void SetLivingWallIntentPreview(IReadOnlyCollection<HexAxialCoord> highlightedCoords, bool danger)
+        {
+            _livingWallView?.SetIntentPreview(highlightedCoords, danger);
         }
 
         public void ResetBattleState()
@@ -964,6 +1028,7 @@ namespace HexDemo
 
                 transform.position = endPos;
                 State.coord = path[i];
+                SyncLivingWallView();
                 onStepReached?.Invoke(State.coord);
 
                 if (stopDelay > 0f)
@@ -976,6 +1041,7 @@ namespace HexDemo
         public void SnapTo(HexGrid grid, float unitYOffset)
         {
             transform.position = grid.AxialToWorld(State.coord) + Vector3.up * unitYOffset;
+            SyncLivingWallView();
             RefreshHealthBar();
         }
 
@@ -1066,6 +1132,12 @@ namespace HexDemo
 
         private void FaceDirection(Vector3 direction)
         {
+            if (IsLivingWall)
+            {
+                transform.rotation = Quaternion.identity;
+                return;
+            }
+
             direction.y = 0f;
             if (direction.sqrMagnitude <= 0.0001f)
                 return;

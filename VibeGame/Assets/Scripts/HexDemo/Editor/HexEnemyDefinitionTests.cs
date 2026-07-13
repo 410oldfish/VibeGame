@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace HexDemo.EditorTests
 {
@@ -25,8 +28,20 @@ namespace HexDemo.EditorTests
         [Test]
         public void UnknownEnemy_DoesNotFallbackToGoblin()
         {
+            LogAssert.Expect(LogType.Error, "Unknown enemy definition id: not_a_real_enemy");
             Assert.That(HexCardLibrary.GetEnemyDefinition("not_a_real_enemy"), Is.Null);
+            LogAssert.Expect(LogType.Error, "Unknown enemy definition id: not_a_real_enemy");
             Assert.That(HexCardLibrary.TryGetEnemyDefinition("not_a_real_enemy", out _), Is.False);
+        }
+
+        [Test]
+        public void EnemyDatabase_ContainsEveryBuiltInDefinition()
+        {
+            var database = Resources.Load<HexEnemyDatabaseSO>("HexEnemyDatabase");
+            Assert.That(database, Is.Not.Null);
+            Assert.That(database.enemies, Has.Count.EqualTo(11));
+            Assert.That(database.enemies.Select(enemy => enemy.id).Distinct().Count(), Is.EqualTo(11));
+            Assert.That(database.enemies.All(enemy => enemy.ToDefinition().deckDefinitions.Count > 0), Is.True);
         }
 
         [TestCase("goblin", 9, 2)]
@@ -61,6 +76,98 @@ namespace HexDemo.EditorTests
             Assert.That(phaseOne.ContainsKey("enemy_chieftain_quake"), Is.False);
             Assert.That(GetCount(phaseTwo, "enemy_goblin_approach"), Is.EqualTo(0));
             Assert.That(GetCount(phaseTwo, "enemy_chieftain_quake"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void SandboxEnemyEnum_CoversEveryPublicBuiltInEnemy()
+        {
+            var enumIds = System.Enum.GetValues(typeof(HexSandboxEnemyType))
+                .Cast<HexSandboxEnemyType>()
+                .Select(value => value.ToDefinitionId())
+                .ToArray();
+            Assert.That(enumIds, Has.Length.EqualTo(11));
+            Assert.That(enumIds.Distinct().Count(), Is.EqualTo(11));
+            Assert.That(enumIds.OrderBy(id => id), Is.EqualTo(HexCardLibrary.GetBuiltInEnemyIds().OrderBy(id => id)));
+            Assert.That(enumIds, Does.Not.Contain("mind_tentacle"));
+        }
+
+        [Test]
+        public void SandboxEnemyConfig_MigratesLegacyDefinitionId()
+        {
+            var config = new HexBattleSandboxScenarioSO.EnemyConfig();
+            FieldInfo legacyField = typeof(HexBattleSandboxScenarioSO.EnemyConfig)
+                .GetField("legacyEnemyDefinitionId", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(legacyField, Is.Not.Null);
+            legacyField.SetValue(config, "living_wall");
+
+            Assert.That(config.MigrateLegacyId(), Is.True);
+            Assert.That(config.enemyType, Is.EqualTo(HexSandboxEnemyType.LivingWall));
+            Assert.That(config.DefinitionId, Is.EqualTo("living_wall"));
+        }
+
+        [Test]
+        public void LivingWallDefinition_MatchesEightCardPairedDesign()
+        {
+            HexEnemyDefinition definition = HexCardLibrary.GetEnemyDefinition("living_wall");
+            Assert.That(definition, Is.Not.Null);
+            Assert.That(definition.encounterType, Is.EqualTo(HexEnemyEncounterType.Elite));
+            Assert.That(definition.intentPattern, Is.EqualTo(HexEnemyIntentPattern.PairedLivingWall));
+            Assert.That(definition.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Free }));
+            Assert.That(definition.maxSummons, Is.EqualTo(2));
+            Assert.That(definition.summonHealth, Is.EqualTo(50));
+
+            var counts = CountById(definition.deckDefinitions);
+            Assert.That(definition.deckDefinitions, Has.Count.EqualTo(8));
+            Assert.That(GetCount(counts, "enemy_wall_advance"), Is.EqualTo(3));
+            Assert.That(GetCount(counts, "enemy_wall_spike"), Is.EqualTo(2));
+            Assert.That(GetCount(counts, "enemy_wall_reform"), Is.EqualTo(1));
+            Assert.That(GetCount(counts, "enemy_wall_fortify"), Is.EqualTo(2));
+            Assert.That(definition.bottomCard.id, Is.EqualTo("enemy_wall_bottom"));
+            Assert.That(HexCardLibrary.GetCardById("enemy_wall_spike").amount, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void LivingWallRules_CreateConnectedFootprintAndCeilBreakDamage()
+        {
+            var offsets = new List<HexAxialCoord>
+            {
+                new(0, 0),
+                new(0, -1),
+                new(0, 1),
+            };
+            Assert.That(offsets, Has.Count.EqualTo(HexLivingWallRules.InitialFootprintSize));
+            Assert.That(HexLivingWallRules.IsConnected(offsets), Is.True);
+            Assert.That(HexLivingWallRules.GetBreakDamage(34), Is.EqualTo(7));
+            Assert.That(HexLivingWallRules.GetBreakDamage(60), Is.EqualTo(12));
+        }
+
+        [Test]
+        public void LivingWallReformRotation_IsPlayerCenteredAndReversible()
+        {
+            var player = new HexAxialCoord(5, 5);
+            var first = new HexAxialCoord(2, 5);
+            HexAxialCoord second = HexLivingWallRules.Rotate180(player, first);
+
+            Assert.That(second, Is.EqualTo(new HexAxialCoord(8, 5)));
+            Assert.That(HexAxialCoord.Distance(player, first), Is.EqualTo(3));
+            Assert.That(HexAxialCoord.Distance(player, second), Is.EqualTo(3));
+            Assert.That(HexLivingWallRules.Rotate180(player, second), Is.EqualTo(first));
+        }
+
+        [Test]
+        public void LivingWallRuntimeState_CloneOwnsItsFootprintList()
+        {
+            var state = new HexBattleUnitState
+            {
+                livingWall = new HexLivingWallRuntimeState
+                {
+                    footprintOffsets = new List<HexAxialCoord> { new(0, 0), new(1, 0), new(-1, 0) },
+                },
+            };
+            HexBattleUnitState clone = state.Clone();
+            clone.livingWall.footprintOffsets.Add(new HexAxialCoord(0, 1));
+            Assert.That(state.livingWall.footprintOffsets, Has.Count.EqualTo(3));
+            Assert.That(clone.livingWall.footprintOffsets, Has.Count.EqualTo(4));
         }
 
         private static int GetCount(IReadOnlyDictionary<string, int> counts, string id) =>

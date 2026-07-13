@@ -1,9 +1,67 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace HexDemo
 {
+    public enum HexSandboxEnemyType
+    {
+        [InspectorName("哥布林")] Goblin = 0,
+        [InspectorName("投矛哥布林")] SpearGoblin = 1,
+        [InspectorName("哥布林队长")] GoblinCaptain = 2,
+        [InspectorName("部落酋长")] TribalChieftain = 3,
+        [InspectorName("骷髅")] Skeleton = 4,
+        [InspectorName("寄生藤蔓")] ParasiticVine = 5,
+        [InspectorName("活墙壁")] LivingWall = 6,
+        [InspectorName("石像鬼")] Gargoyle = 7,
+        [InspectorName("地狱犬")] Hellhound = 8,
+        [InspectorName("宝箱怪")] Mimic = 9,
+        [InspectorName("夺心魔")] MindFlayer = 10,
+    }
+
+    public static class HexSandboxEnemyTypeExtensions
+    {
+        public static string ToDefinitionId(this HexSandboxEnemyType enemyType) => enemyType switch
+        {
+            HexSandboxEnemyType.Goblin => "goblin",
+            HexSandboxEnemyType.SpearGoblin => "spear_goblin",
+            HexSandboxEnemyType.GoblinCaptain => "goblin_captain",
+            HexSandboxEnemyType.TribalChieftain => "tribal_chieftain",
+            HexSandboxEnemyType.Skeleton => "skeleton",
+            HexSandboxEnemyType.ParasiticVine => "parasitic_vine",
+            HexSandboxEnemyType.LivingWall => "living_wall",
+            HexSandboxEnemyType.Gargoyle => "gargoyle",
+            HexSandboxEnemyType.Hellhound => "hellhound",
+            HexSandboxEnemyType.Mimic => "mimic",
+            HexSandboxEnemyType.MindFlayer => "mind_flayer",
+            _ => throw new ArgumentOutOfRangeException(nameof(enemyType), enemyType, null),
+        };
+
+        public static bool TryFromDefinitionId(string id, out HexSandboxEnemyType enemyType)
+        {
+            enemyType = HexSandboxEnemyType.Goblin;
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+
+            switch (id.Trim().ToLowerInvariant())
+            {
+                case "goblin": enemyType = HexSandboxEnemyType.Goblin; return true;
+                case "spear_goblin": enemyType = HexSandboxEnemyType.SpearGoblin; return true;
+                case "goblin_captain": enemyType = HexSandboxEnemyType.GoblinCaptain; return true;
+                case "tribal_chieftain": enemyType = HexSandboxEnemyType.TribalChieftain; return true;
+                case "skeleton": enemyType = HexSandboxEnemyType.Skeleton; return true;
+                case "parasitic_vine": enemyType = HexSandboxEnemyType.ParasiticVine; return true;
+                case "living_wall": enemyType = HexSandboxEnemyType.LivingWall; return true;
+                case "gargoyle": enemyType = HexSandboxEnemyType.Gargoyle; return true;
+                case "hellhound": enemyType = HexSandboxEnemyType.Hellhound; return true;
+                case "mimic": enemyType = HexSandboxEnemyType.Mimic; return true;
+                case "mind_flayer": enemyType = HexSandboxEnemyType.MindFlayer; return true;
+                default: return false;
+            }
+        }
+    }
+
     [CreateAssetMenu(menuName = "HexDemo/Debug/Battle Sandbox Scenario", fileName = "BattleSandboxScenario")]
     public sealed class HexBattleSandboxScenarioSO : ScriptableObject
     {
@@ -56,18 +114,55 @@ namespace HexDemo
         }
 
         [Serializable]
-        public sealed class EnemyConfig
+        public sealed class EnemyConfig : ISerializationCallbackReceiver
         {
-            public string enemyDefinitionId = "goblin";
+            public HexSandboxEnemyType enemyType = HexSandboxEnemyType.Goblin;
+            [FormerlySerializedAs("enemyDefinitionId"), SerializeField, HideInInspector]
+            private string legacyEnemyDefinitionId = string.Empty;
             public string displayNameOverride = string.Empty;
             public Vector2Int spawnCoord = new(7, 5);
+            [Tooltip("仅活墙壁使用：第二面主墙的本体格。")]
+            public Vector2Int livingWallPartnerSpawnCoord = new(3, 5);
             public int maxHealthOverride = -1;
             public int currentHealthOverride = -1;
             public List<string> deckCardIds = new();
+
+            public string DefinitionId => string.IsNullOrWhiteSpace(legacyEnemyDefinitionId)
+                ? enemyType.ToDefinitionId()
+                : legacyEnemyDefinitionId;
+
+            public bool MigrateLegacyId()
+            {
+                if (string.IsNullOrWhiteSpace(legacyEnemyDefinitionId) ||
+                    !HexSandboxEnemyTypeExtensions.TryFromDefinitionId(legacyEnemyDefinitionId, out var migrated))
+                    return false;
+
+                enemyType = migrated;
+                legacyEnemyDefinitionId = string.Empty;
+                return true;
+            }
+
+            public void OnBeforeSerialize()
+            {
+            }
+
+            public void OnAfterDeserialize()
+            {
+                MigrateLegacyId();
+            }
         }
 
         public TerrainConfig terrain = new();
         public PlayerConfig player = new();
         public List<EnemyConfig> enemies = new();
+
+        private void OnValidate()
+        {
+            if (enemies == null)
+                return;
+
+            for (int i = 0; i < enemies.Count; i++)
+                enemies[i]?.MigrateLegacyId();
+        }
     }
 }

@@ -115,6 +115,7 @@ namespace HexDemo
             };
             for (int i = 0; i < ids.Length; i++)
                 _enemySpecialHandlers[ids[i]] = ResolveRegisteredEnemySpecialCard;
+            RegisterLivingWallSpecialHandlers();
         }
 
         private void EnsureEnemyDefinition(HexBattleUnit enemy)
@@ -348,6 +349,16 @@ namespace HexDemo
             var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
             if (definition == null || !_enemyIntentSlots.TryGetValue(enemy, out var slots) || slots == null || slots.Count == 0)
                 return string.Empty;
+
+            if (enemy.State.livingWall?.reformPending == true)
+                return "重聚准备：下个自身回合开始时传送并成长";
+            if (definition.intentPattern == HexEnemyIntentPattern.PairedLivingWall)
+            {
+                var pair = GetLivingWallPair(enemy);
+                return pair != null
+                    ? $"对向墙：{pair.State.displayName}"
+                    : "无配对墙：改以玩家为目标";
+            }
 
             var target = GetPrimaryEnemyTarget(enemy);
             bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
@@ -674,7 +685,7 @@ namespace HexDemo
                 !CanAttackTarget(_playerUnit, targetUnit))
                 return false;
 
-            if (HexAxialCoord.Distance(_playerUnit.State.coord, targetUnit.State.coord) > _draggedCard.definition.castRange + GetWarriorFirstAttackRangeBonus(_draggedCard))
+            if (GetUnitDistance(_playerUnit, targetUnit) > _draggedCard.definition.castRange + GetWarriorFirstAttackRangeBonus(_draggedCard))
                 return false;
 
             if (!SubmitAuthoritativeCommand(HexNetworkCommandType.PlayCard, ToPayload(_draggedCard, targetUnit.State.coord)))
@@ -975,7 +986,10 @@ namespace HexDemo
                     yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
                 }
 
-                DamageRuinsInCoords(GetDirectionalAreaCoords(source.State.coord, aimedCoord, card.definition.castRange, card.definition.effectRadius), card.definition.amount + Mathf.Max(0, source.State.strength));
+                DamageRuinsInCoords(
+                    GetDirectionalAreaCoords(source.State.coord, aimedCoord, card.definition.castRange, card.definition.effectRadius),
+                    card.definition.amount + Mathf.Max(0, source.State.strength),
+                    targets);
 
                 yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
 
@@ -1029,7 +1043,7 @@ namespace HexDemo
                 yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
             }
 
-            DamageRuinsInCoords(affectedCoords, card.definition.amount + Mathf.Max(0, source.State.strength));
+            DamageRuinsInCoords(affectedCoords, card.definition.amount + Mathf.Max(0, source.State.strength), targets);
 
             yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
             for (int i = 0; i < targets.Count; i++)
@@ -1427,6 +1441,7 @@ namespace HexDemo
                 yield break;
             }
 
+            yield return ResolveLivingWallTurnStarts();
             yield return ResolveMindTentaclePhase();
 
             UpdateMovementHighlights();
@@ -1535,6 +1550,16 @@ namespace HexDemo
                 _enemyIntentSlots.Remove(enemy);
                 return;
             }
+            if (enemy.State.livingWall?.reformPending == true)
+            {
+                enemy.Deck.DiscardHand();
+                enemy.SetLivingWallIntentPreview(null, false);
+                _enemyIntentSlots[enemy] = new List<HexEnemyIntentSlot>
+                {
+                    new() { slotKind = HexEnemyIntentSlotKind.Free, card = null },
+                };
+                return;
+            }
             var slots = new List<HexEnemyIntentSlot>();
             enemy.Deck.DiscardHand();
             enemy.State.enemyHiddenIntentSlotIndex = -1;
@@ -1571,6 +1596,8 @@ namespace HexDemo
             _enemyIntentSlots[enemy] = slots;
             if (slots.Any(slot => slot?.card?.definition?.id == "enemy_mind_flayer_obscure") && slots.Count > 1)
                 enemy.State.enemyHiddenIntentSlotIndex = Random.Range(0, slots.Count);
+            if (enemy.IsLivingWall)
+                UpdateLivingWallIntentPreview(enemy, slots.FirstOrDefault(slot => slot?.card != null)?.card);
         }
 
         private void TryApplyEnemyPhaseTwo(HexBattleUnit enemy)
@@ -1607,7 +1634,7 @@ namespace HexDemo
                     var enemy = _enemyUnits[i];
                     if (enemy == null || !enemy.IsAlive || enemy.State.burn <= 0)
                         continue;
-                    if (HexAxialCoord.Distance(unit.State.coord, enemy.State.coord) <= 1)
+                    if (GetUnitDistance(unit, enemy) <= 1)
                         ApplyWarriorBurn(unit, enemy, 1);
                 }
             }
@@ -1713,7 +1740,7 @@ namespace HexDemo
                 }
                 if (bottomId == "enemy_wall_bottom")
                 {
-                    if (!TryPlaceBarrierNear(enemy, 1)) GainArmorWithFeedback(enemy, 5);
+                    TrySummonLivingWallOffspring(enemy);
                     return;
                 }
                 if (bottomId == "enemy_gargoyle_bottom")
@@ -2057,21 +2084,51 @@ namespace HexDemo
 
         private IEnumerator ResolveEnemyChargeRoutine(HexBattleUnit enemy, HexBattleUnit target, int maxSteps, int damage, bool stunOnBlocked)
         {
-            if (enemy == null || target == null || !target.IsAlive)
+            if (grid == null || enemy == null || target == null || !target.IsAlive)
                 yield break;
-            var path = FindBestApproachPath(enemy, target.State.coord, 1);
-            if (path == null || path.Count < 2)
+
+            int directionIndex = HexBattlePathing.GetPrimaryDirectionIndex(grid, enemy.State.coord, target.State.coord);
+            var path = new List<HexAxialCoord> { enemy.State.coord };
+            HexAxialCoord current = enemy.State.coord;
+            bool hitObstacle = false;
+            for (int step = 0; step < Mathf.Max(1, maxSteps); step++)
             {
-                if (stunOnBlocked) enemy.ApplyStun(1);
-                yield break;
+                HexAxialCoord next = HexAxialCoord.Neighbor(current, directionIndex);
+                if (next.Equals(target.State.coord))
+                    break;
+
+                if (IsChargeObstacle(next, enemy))
+                {
+                    hitObstacle = true;
+                    break;
+                }
+
+                if (IsOccupied(next, enemy))
+                    break;
+
+                path.Add(next);
+                current = next;
             }
 
-            int takeCount = Mathf.Min(path.Count, Mathf.Max(1, maxSteps) + 1);
-            yield return MoveUnitRoutine(enemy, path.Take(takeCount).ToList(), 0, target.State.coord);
+            if (path.Count > 1)
+                yield return MoveUnitRoutine(enemy, path, 0, target.State.coord);
+
             if (HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
                 yield return ResolveDirectAttackRoutine(enemy, target, damage);
-            else if (stunOnBlocked)
+
+            if (stunOnBlocked && hitObstacle)
                 enemy.ApplyStun(1);
+        }
+
+        private bool IsChargeObstacle(HexAxialCoord coord, HexBattleUnit movingUnit)
+        {
+            if (grid == null || !grid.IsCoordInside(coord))
+                return true;
+
+            if (grid.TryGetTile(coord, out var tile) && tile != null && !TileCanEnter(tile))
+                return true;
+
+            return HasSceneObstacleAtCoord(coord, movingUnit);
         }
 
         private bool HasAdjacentStructure(HexBattleUnit unit, HexTerrainStructureType type)
@@ -2653,7 +2710,7 @@ namespace HexDemo
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
-                if (enemy != null && enemy.IsAlive && HexAxialCoord.Distance(coord, enemy.State.coord) == 1)
+                if (enemy != null && enemy.IsAlive && GetDistanceToUnit(coord, enemy) == 1)
                     return true;
             }
 
@@ -2778,13 +2835,14 @@ namespace HexDemo
                 if (!grid.IsCoordInside(current))
                     break;
 
-                var victim = _units.FirstOrDefault(unit => unit != null && unit.IsAlive && unit != source && unit.State.coord.Equals(current));
+                var victim = FindUnitAtCoord(current, source);
                 if (victim != null)
                 {
                     yield return ResolveDirectAttackRoutine(source, victim, 4, knockback: 1);
                 }
 
-                if (grid.TryGetTile(current, out var tile) && tile != null && TileBlocksLineOfSight(tile))
+                if ((grid.TryGetTile(current, out var tile) && tile != null && TileBlocksLineOfSight(tile)) ||
+                    FindLivingWallAtCoord(current, source) != null)
                     break;
             }
         }
@@ -2847,7 +2905,7 @@ namespace HexDemo
         private IEnumerator ResolveWarriorAreaAttackRoutine(HexBattleUnit source, HexAxialCoord center, int radius, int damage, int burn = 0, int knockback = 0)
         {
             var targets = GetEnemiesInArea(center, Mathf.Max(0, radius), source)
-                .OrderBy(enemy => HexAxialCoord.Distance(source.State.coord, enemy.State.coord))
+                .OrderBy(enemy => GetUnitDistance(source, enemy))
                 .ToList();
             for (int i = 0; i < targets.Count; i++)
             {
@@ -2864,7 +2922,7 @@ namespace HexDemo
         private IEnumerator ResolveWarriorAdjacentMultiAttackRoutine(HexBattleUnit source, int maxTargets, int damage)
         {
             var targets = _enemyUnits
-                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .Where(enemy => enemy != null && enemy.IsAlive && GetUnitDistance(source, enemy) <= 1)
                 .OrderBy(enemy => enemy.State.currentHealth)
                 .Take(Mathf.Max(1, maxTargets))
                 .ToList();
@@ -2890,7 +2948,7 @@ namespace HexDemo
         private IEnumerator KnockbackAdjacentEnemiesRoutine(HexBattleUnit source, int distance)
         {
             var targets = _enemyUnits
-                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .Where(enemy => enemy != null && enemy.IsAlive && GetUnitDistance(source, enemy) <= 1)
                 .ToList();
             for (int i = 0; i < targets.Count; i++)
                 yield return ApplyKnockbackRoutine(source, targets[i], distance);
@@ -3004,7 +3062,7 @@ namespace HexDemo
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
-                if (enemy != null && enemy.IsAlive && covered.Contains(enemy.State.coord))
+                if (enemy != null && enemy.IsAlive && enemy.OccupiedCoords.Any(covered.Contains))
                     ApplyWarriorBurn(source, enemy, amount);
             }
         }
@@ -3012,7 +3070,7 @@ namespace HexDemo
         private IEnumerator ResolveBurningWindRoutine(HexBattleUnit source)
         {
             var targets = _enemyUnits
-                .Where(enemy => enemy != null && enemy.IsAlive && HexAxialCoord.Distance(source.State.coord, enemy.State.coord) <= 1)
+                .Where(enemy => enemy != null && enemy.IsAlive && GetUnitDistance(source, enemy) <= 1)
                 .ToList();
             for (int i = 0; i < targets.Count; i++)
             {
@@ -3032,7 +3090,7 @@ namespace HexDemo
                 yield return ResolveDirectAttackRoutine(source, target, burn);
 
             var adjacent = _enemyUnits
-                .Where(enemy => enemy != null && enemy.IsAlive && enemy != target && HexAxialCoord.Distance(target.State.coord, enemy.State.coord) <= 1)
+                .Where(enemy => enemy != null && enemy.IsAlive && enemy != target && GetUnitDistance(target, enemy) <= 1)
                 .ToList();
             for (int i = 0; i < adjacent.Count; i++)
                 ApplyWarriorBurn(source, adjacent[i], 1);
@@ -3111,7 +3169,7 @@ namespace HexDemo
 
             return _enemyUnits
                 .Where(enemy => enemy != null && enemy.IsAlive)
-                .OrderBy(enemy => HexAxialCoord.Distance(source.State.coord, enemy.State.coord))
+                .OrderBy(enemy => GetUnitDistance(source, enemy))
                 .FirstOrDefault();
         }
 
@@ -4423,7 +4481,7 @@ namespace HexDemo
             if (enemy == null || target == null)
                 return false;
 
-            int distance = HexAxialCoord.Distance(enemy.State.coord, target.State.coord);
+            int distance = GetUnitDistance(enemy, target);
             int minRange = Mathf.Max(1, definition?.attackMinRange ?? enemy.State.enemyAttackMinRange);
             int maxRange = Mathf.Max(minRange, cardDefinition != null ? cardDefinition.castRange : definition?.attackMaxRange ?? enemy.State.enemyAttackMaxRange);
             if (cardDefinition != null && cardDefinition.castRange <= 1)
@@ -4438,10 +4496,14 @@ namespace HexDemo
                 return false;
 
             if (definition.effectType == HexCardEffectType.DestroyBarrier &&
-                grid.TryGetTile(targetCoord, out var targetTile) &&
-                targetTile.structureType == HexTerrainStructureType.Barrier &&
                 HexAxialCoord.Distance(unit.State.coord, targetCoord) <= Mathf.Max(1, definition.castRange))
-                return true;
+            {
+                if (FindLivingWallAtCoord(targetCoord) != null)
+                    return true;
+                if (grid.TryGetTile(targetCoord, out var targetTile) &&
+                    targetTile.structureType == HexTerrainStructureType.Barrier)
+                    return true;
+            }
 
             if (definition.effectType == HexCardEffectType.PlaceRuin)
                 return HexAxialCoord.Distance(unit.State.coord, targetCoord) <= Mathf.Max(1, definition.castRange);
@@ -4634,7 +4696,7 @@ namespace HexDemo
                 var unit = _units[i];
                 if (unit == null || !unit.IsAlive || unit.State.faction == source.State.faction)
                     continue;
-                if (HexAxialCoord.Distance(source.State.coord, unit.State.coord) <= 1)
+                if (GetUnitDistance(source, unit) <= 1)
                     unit.ApplyBurn(amount);
             }
         }
@@ -4647,7 +4709,7 @@ namespace HexDemo
 
             var enemy = _enemyUnits
                 .Where(candidate => candidate != null && candidate.IsAlive)
-                .OrderBy(candidate => HexAxialCoord.Distance(source.State.coord, candidate.State.coord))
+                .OrderBy(candidate => GetUnitDistance(source, candidate))
                 .FirstOrDefault();
             enemy?.Deck.AddToDrawPile(fear, false);
         }
@@ -4666,6 +4728,10 @@ namespace HexDemo
 
         private bool DestroyBarrierAt(HexAxialCoord coord)
         {
+            HexBattleUnit livingWall = FindLivingWallAtCoord(coord);
+            if (livingWall != null)
+                return ApplyLivingWallBreak(livingWall);
+
             if (grid == null || !grid.TryGetTile(coord, out var tile) || tile == null)
                 return false;
 
@@ -4764,7 +4830,7 @@ namespace HexDemo
                 yield break;
 
             var targets = _units
-                .Where(unit => unit != null && unit.IsAlive && unit != source && HexAxialCoord.Distance(source.State.coord, unit.State.coord) <= Mathf.Max(1, card.definition.effectRadius))
+                .Where(unit => unit != null && unit.IsAlive && unit != source && GetUnitDistance(source, unit) <= Mathf.Max(1, card.definition.effectRadius))
                 .ToList();
 
             source.PlayAttackAnimation();
@@ -5133,6 +5199,8 @@ namespace HexDemo
 
             foreach (var coord in coords)
             {
+                if (FindLivingWallAtCoord(coord) != null)
+                    return true;
                 if (grid.TryGetTile(coord, out var tile) && tile != null && TileHasRuin(tile))
                     return true;
             }
@@ -5140,16 +5208,26 @@ namespace HexDemo
             return false;
         }
 
-        private void DamageRuinsInCoords(IEnumerable<HexAxialCoord> coords, int amount)
+        private void DamageRuinsInCoords(
+            IEnumerable<HexAxialCoord> coords,
+            int amount,
+            IEnumerable<HexBattleUnit> unitTargets = null)
         {
             if (grid == null || coords == null || amount <= 0)
                 return;
 
             var seen = new HashSet<HexAxialCoord>();
+            var seenWalls = new HashSet<HexBattleUnit>();
+            var excludedWalls = unitTargets != null
+                ? new HashSet<HexBattleUnit>(unitTargets.Where(unit => unit != null && unit.IsLivingWall))
+                : new HashSet<HexBattleUnit>();
             foreach (var coord in coords)
             {
                 if (!seen.Add(coord))
                     continue;
+                HexBattleUnit livingWall = FindLivingWallAtCoord(coord);
+                if (livingWall != null && !excludedWalls.Contains(livingWall) && seenWalls.Add(livingWall))
+                    ApplyLivingWallBreak(livingWall);
                 if (!grid.TryGetTile(coord, out var tile) || tile == null || !TileHasRuin(tile))
                     continue;
 
@@ -5217,7 +5295,7 @@ namespace HexDemo
                 var unit = _units[i];
                 if (unit == null || !unit.IsAlive || unit == barreled)
                     continue;
-                if (HexAxialCoord.Distance(barreled.State.coord, unit.State.coord) <= 1)
+                if (GetUnitDistance(barreled, unit) <= 1)
                     ApplyDamageToUnit(unit, blastDamage, source);
             }
 
@@ -5231,12 +5309,31 @@ namespace HexDemo
                 return false;
 
             if (!TryGetRequiredAttackTarget(source, out var requiredTarget))
-                return HasLineOfSight(source.State.coord, candidate.State.coord);
+                return HasLineOfSightToUnit(source, candidate);
 
-            return candidate == requiredTarget && HasLineOfSight(source.State.coord, candidate.State.coord);
+            return candidate == requiredTarget && HasLineOfSightToUnit(source, candidate);
+        }
+
+        private bool HasLineOfSightToUnit(HexBattleUnit source, HexBattleUnit target)
+        {
+            if (source == null || target == null)
+                return false;
+
+            IReadOnlyList<HexAxialCoord> sourceCoords = source.OccupiedCoords;
+            IReadOnlyList<HexAxialCoord> targetCoords = target.OccupiedCoords;
+            for (int sourceIndex = 0; sourceIndex < sourceCoords.Count; sourceIndex++)
+                for (int targetIndex = 0; targetIndex < targetCoords.Count; targetIndex++)
+                    if (HasLineOfSight(sourceCoords[sourceIndex], targetCoords[targetIndex], source, target))
+                        return true;
+            return false;
         }
 
         private bool HasLineOfSight(HexAxialCoord sourceCoord, HexAxialCoord targetCoord)
+        {
+            return HasLineOfSight(sourceCoord, targetCoord, null, null);
+        }
+
+        private bool HasLineOfSight(HexAxialCoord sourceCoord, HexAxialCoord targetCoord, HexBattleUnit sourceUnit, HexBattleUnit targetUnit)
         {
             if (grid == null)
                 return true;
@@ -5252,6 +5349,9 @@ namespace HexDemo
                 if (coord.Equals(targetCoord))
                     return true;
                 if (grid.TryGetTile(coord, out var tile) && tile != null && TileBlocksLineOfSight(tile))
+                    return false;
+                var wall = FindLivingWallAtCoord(coord, sourceUnit);
+                if (wall != null && wall != targetUnit)
                     return false;
             }
 
@@ -5392,7 +5492,7 @@ namespace HexDemo
 
             if (card.definition.targetType == HexCardTargetType.Tile)
             {
-                if (HexAxialCoord.Distance(source.State.coord, preferredTarget.State.coord) > card.definition.castRange)
+                if (GetUnitDistance(source, preferredTarget) > card.definition.castRange)
                     return false;
 
                 var areaTargets = GetEnemiesInArea(preferredTarget.State.coord, card.definition.effectRadius, source);
@@ -5406,7 +5506,7 @@ namespace HexDemo
 
             if (card.definition.effectRadius > 0)
             {
-                if (HexAxialCoord.Distance(source.State.coord, preferredTarget.State.coord) > card.definition.castRange)
+                if (GetUnitDistance(source, preferredTarget) > card.definition.castRange)
                     return false;
 
                 var areaTargets = GetEnemiesInArea(preferredTarget.State.coord, card.definition.effectRadius, source);
@@ -5419,7 +5519,7 @@ namespace HexDemo
                 return true;
             }
 
-            if (HexAxialCoord.Distance(source.State.coord, preferredTarget.State.coord) > card.definition.castRange)
+            if (GetUnitDistance(source, preferredTarget) > card.definition.castRange)
                 return false;
             if (card.definition.cardType == HexCardType.Attack && !CanAttackTarget(source, preferredTarget))
                 return false;
@@ -5438,7 +5538,7 @@ namespace HexDemo
 
             return _units
                 .Where(unit => unit != null && unit.IsAlive && unit != source && unit.State.faction != source.State.faction)
-                .OrderBy(unit => HexAxialCoord.Distance(source.State.coord, unit.State.coord))
+                .OrderBy(unit => GetUnitDistance(source, unit))
                 .FirstOrDefault();
         }
 
@@ -5628,7 +5728,7 @@ namespace HexDemo
                 if (unit == null || !unit.IsAlive || unit == ignoreUnit)
                     continue;
 
-                if (unit.State.coord.Equals(coord))
+                if (unit.Occupies(coord))
                     return true;
             }
 
@@ -5733,6 +5833,8 @@ namespace HexDemo
         {
             if (grid == null || source == null || target == null || distance <= 0)
                 return null;
+            if (target.IsLivingWall)
+                return ResolveLivingWallForcedMovement(source, target, distance, moveTowardSource);
             if (target.State.toughness > 0 || target.State.cannotBeKnockedBackThisTurn)
             {
                 return new ForcedMovementResult
@@ -5897,7 +5999,7 @@ namespace HexDemo
                 if (unit == null || !unit.IsAlive || unit == ignoreUnit)
                     continue;
 
-                if (unit.State.coord.Equals(coord))
+                if (unit.Occupies(coord))
                     return unit;
             }
 
@@ -5930,7 +6032,7 @@ namespace HexDemo
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
-                if (HexAxialCoord.Distance(center, enemy.State.coord) <= radius)
+                if (GetDistanceToUnit(center, enemy) <= radius)
                     return true;
             }
 
@@ -5949,7 +6051,7 @@ namespace HexDemo
                 if (unit.State.faction == source.State.faction)
                     continue;
 
-                if (HexAxialCoord.Distance(center, unit.State.coord) <= radius)
+                if (GetDistanceToUnit(center, unit) <= radius)
                     result.Add(unit);
             }
 
@@ -5972,7 +6074,7 @@ namespace HexDemo
                 if (unit.State.faction == source.State.faction)
                     continue;
 
-                if (coveredCoords.Contains(unit.State.coord))
+                if (unit.OccupiedCoords.Any(coveredCoords.Contains))
                     result.Add(unit);
             }
 
@@ -6008,6 +6110,7 @@ namespace HexDemo
                 bool blocksLine = grid.TryGetTile(current, out var currentTile) &&
                                   currentTile != null &&
                                   TileBlocksLineOfSight(currentTile);
+                blocksLine |= FindLivingWallAtCoord(current) != null;
                 if (blocksLine)
                     break;
 
@@ -6122,7 +6225,7 @@ namespace HexDemo
             if (!TryGetHoveredTile(out var tile, out _))
                 return false;
 
-            unit = _units.FirstOrDefault(candidate => candidate.IsAlive && candidate.State.coord.Equals(tile.coord));
+            unit = _units.FirstOrDefault(candidate => candidate.IsAlive && candidate.Occupies(tile.coord));
             return unit != null;
         }
 
@@ -6232,7 +6335,7 @@ namespace HexDemo
 
                 bool targetable = _draggedCard.definition.effectRadius > 0
                     ? HasEnemyInArea(coord, _draggedCard.definition.effectRadius)
-                    : _enemyUnits.Any(enemy => enemy != null && enemy.IsAlive && enemy.State.coord.Equals(coord));
+                    : _enemyUnits.Any(enemy => enemy != null && enemy.IsAlive && enemy.Occupies(coord));
                 if (!targetable &&
                     _draggedCard.definition.cardType == HexCardType.Attack &&
                     _draggedCard.definition.targetType == HexCardTargetType.EnemyUnit)
@@ -6373,7 +6476,7 @@ namespace HexDemo
                     if (IsMovementDestinationBlocked(tile.coord, unit))
                         continue;
 
-                    int distance = HexAxialCoord.Distance(unit.State.coord, tile.coord);
+                    int distance = GetDistanceToUnit(tile.coord, unit);
                     if (distance <= maxMoveCost)
                         jumped[tile.coord] = distance;
                 }

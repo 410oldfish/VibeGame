@@ -86,6 +86,7 @@ namespace HexDemo
         ApproachStrike = 1,
         Ranged = 2,
         Stationary = 3,
+        PairedLivingWall = 4,
     }
 
     public enum HexEnemyIntentSlotKind
@@ -541,6 +542,32 @@ namespace HexDemo
     }
 
     [Serializable]
+    public sealed class HexLivingWallRuntimeState
+    {
+        public bool isOffspring;
+        public int spawnOrder;
+        public string pairedWallId;
+        public bool reformPending;
+        public bool movementLocked;
+        public List<HexAxialCoord> footprintOffsets = new();
+
+        public HexLivingWallRuntimeState Clone()
+        {
+            return new HexLivingWallRuntimeState
+            {
+                isOffspring = isOffspring,
+                spawnOrder = spawnOrder,
+                pairedWallId = pairedWallId,
+                reformPending = reformPending,
+                movementLocked = movementLocked,
+                footprintOffsets = footprintOffsets != null
+                    ? new List<HexAxialCoord>(footprintOffsets)
+                    : new List<HexAxialCoord>(),
+            };
+        }
+    }
+
+    [Serializable]
     public sealed class HexBattleUnitState
     {
         public string id;
@@ -704,10 +731,13 @@ namespace HexDemo
         public bool rooted;
         public bool isPlant;
         public HexAxialCoord coord;
+        public HexLivingWallRuntimeState livingWall;
 
         public HexBattleUnitState Clone()
         {
-            return (HexBattleUnitState)MemberwiseClone();
+            var clone = (HexBattleUnitState)MemberwiseClone();
+            clone.livingWall = livingWall?.Clone();
+            return clone;
         }
     }
 
@@ -1088,7 +1118,11 @@ namespace HexDemo
         private static readonly HexCardDefinition WallGrow = Card("enemy_wall_grow", "生长", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 1, 0, "Enemy", "邻格放置障碍。", new Color(0.4f, 0.5f, 0.3f, 1f));
         private static readonly HexCardDefinition WallThickHide = Card("enemy_wall_thick_hide", "厚皮", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 8, 0, 0, "Enemy", "获得8格挡。", new Color(0.42f, 0.45f, 0.38f, 1f));
         private static readonly HexCardDefinition WallRegenerate = Card("enemy_wall_regenerate", "再生", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 3, 0, 0, "Enemy", "回复3生命。", new Color(0.32f, 0.58f, 0.34f, 1f));
-        private static readonly HexCardDefinition WallBottom = Card("enemy_wall_bottom", "墙裂", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 5, 1, 0, "Enemy", "底牌：邻格放置障碍，失败则获得5格挡。", new Color(0.46f, 0.43f, 0.36f, 1f), false, new[] { "底牌" });
+        private static readonly HexCardDefinition WallAdvance = Card("enemy_wall_advance", "推进", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "整面墙向对向墙或玩家推进1格，并击退路径上的敌方。", new Color(0.42f, 0.58f, 0.28f, 1f));
+        private static readonly HexCardDefinition WallSpike = Card("enemy_wall_spike", "尖刺", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 10, 1, 0, "Enemy", "整条前沿射程1，每个单位最多受到1次10伤。", new Color(0.58f, 0.3f, 0.22f, 1f));
+        private static readonly HexCardDefinition WallReform = Card("enemy_wall_reform", "重聚", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "下个自身回合开始时传送到距玩家3格的合法位置，体积+1。", new Color(0.36f, 0.48f, 0.58f, 1f));
+        private static readonly HexCardDefinition WallFortify = Card("enemy_wall_fortify", "加固", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 8, 0, 0, "Enemy", "每格体积获得8防御，直到下个自身回合开始前不可移动。", new Color(0.38f, 0.42f, 0.34f, 1f));
+        private static readonly HexCardDefinition WallBottom = Card("enemy_wall_bottom", "分裂增殖", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 2, 0, "Enemy", "底牌：场上子代少于2时召唤1只50生命的子代活墙壁。", new Color(0.46f, 0.43f, 0.36f, 1f), false, new[] { "底牌" });
 
         private static readonly HexCardDefinition GargoyleClaw = Card("enemy_gargoyle_claw", "爪击", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 6, 1, 0, "Enemy", "邻格6伤。", new Color(0.52f, 0.5f, 0.56f, 1f));
         private static readonly HexCardDefinition GargoyleDive = Card("enemy_gargoyle_dive", "俯冲", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.MoveToward, HexCardTargetType.EnemyUnit, 0, 8, 2, 0, "Enemy", "直线2突进并造成8伤。", new Color(0.58f, 0.5f, 0.58f, 1f));
@@ -1178,7 +1212,8 @@ namespace HexDemo
             ChieftainBottom,
             SkeletonStrike, SkeletonShamble, SkeletonShield, SkeletonBottom,
             VineStrike, VineEntangle, VineSnare, VineCrawl, VineRoot, VineSpread, VineSporeSac, VineBottom,
-            WallStab, WallRootStab, WallCrush, WallGrow, WallThickHide, WallRegenerate, WallBottom,
+            WallStab, WallRootStab, WallCrush, WallGrow, WallThickHide, WallRegenerate,
+            WallAdvance, WallSpike, WallReform, WallFortify, WallBottom,
             GargoyleClaw, GargoyleDive, GargoyleStoneSkin, GargoyleHover, GargoyleGuard, GargoyleGaze, GargoyleRockfall, GargoyleBottom,
             HellhoundBite, HellhoundChainBite, HellhoundFlameFang, HellhoundCharge, HellhoundLickFire, HellhoundInstinct, HellhoundSniff, HellhoundEmber, HellhoundBottom,
             MimicFrenzy, MimicPounce, MimicShell, MimicReveal, MimicSticky, MimicGreed, MimicBottom,
@@ -1198,6 +1233,7 @@ namespace HexDemo
         private static List<HexCardDefinition> s_loadedPaladinPool;
         private static List<HexCardDefinition> s_loadedDruidPool;
         private static List<HexCardDefinition> s_loadedCommonPool;
+        private static List<HexCardDefinition> s_loadedEnemyPool;
 
         private const string CardDatabaseResourcePath = "HexCardDatabase";
         private const string EnemyDatabaseResourcePath = "HexEnemyDatabase";
@@ -1243,7 +1279,8 @@ namespace HexDemo
         public static HexCardDefinition GetCommonDash() => CommonDash;
         public static HexCardDefinition GetGoblinStrike() => GoblinStrike;
         public static HexCardDefinition GetGoblinApproach() => GoblinApproach;
-        public static IReadOnlyList<HexCardDefinition> GetEnemyCards() => EnemyCards;
+        public static IReadOnlyList<HexCardDefinition> GetEnemyCards() => GetEnemyPool();
+        public static IReadOnlyList<HexCardDefinition> GetEnemyCardsRaw() => EnemyCards;
         public static IReadOnlyList<HexCardDefinition> GetWarriorDesignCardsRaw() => WarriorDesignCards;
         public static IReadOnlyList<HexCardDefinition> GetRewardPool() => GetWarriorPool();
         public static IReadOnlyList<HexCardDefinition> GetCommonPool()
@@ -1306,6 +1343,25 @@ namespace HexDemo
             }
 
             return s_loadedPaladinPool;
+        }
+
+        public static IReadOnlyList<HexCardDefinition> GetEnemyPool()
+        {
+            if (s_loadedEnemyPool == null)
+            {
+                var fromDb = Database != null ? Database.BuildEnemy() : null;
+                s_loadedEnemyPool = fromDb != null && fromDb.Count > 0
+                    ? fromDb
+                    : new List<HexCardDefinition>();
+                for (int i = 0; i < EnemyCards.Count; i++)
+                {
+                    var builtIn = EnemyCards[i];
+                    if (builtIn != null && !s_loadedEnemyPool.Any(card => card != null && card.id == builtIn.id))
+                        s_loadedEnemyPool.Add(builtIn);
+                }
+            }
+
+            return s_loadedEnemyPool;
         }
 
         public static List<HexCardDefinition> CreateStarterDeck(HexCardProfession profession = HexCardProfession.Warrior)
@@ -1440,7 +1496,7 @@ namespace HexDemo
                 case "parasitic_vine":
                     return CreateEnemyDefinition(id, "寄生藤蔓", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 0, VineBottom, Repeat((VineStrike, 3), (VineEntangle, 2), (VineSnare, 1), (VineCrawl, 2), (VineRoot, 2), (VineSpread, 1), (VineSporeSac, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "living_wall":
-                    return CreateEnemyDefinition(id, "活墙壁", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, WallBottom, Repeat((WallStab, 3), (WallRootStab, 1), (WallCrush, 2), (WallGrow, 2), (WallThickHide, 2), (WallRegenerate, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                    return CreateEnemyDefinition(id, "活墙壁", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.PairedLivingWall, 1, 1, 0, WallBottom, Repeat((WallAdvance, 3), (WallSpike, 2), (WallReform, 1), (WallFortify, 2)), 2, 50, 0f, null, HexEnemyIntentSlotKind.Free);
                 case "gargoyle":
                     return CreateEnemyDefinition(id, "石像鬼", HexEnemyEncounterType.Elite, HexEnemyIntentPattern.Ranged, 1, 1, 2, GargoyleBottom, Repeat((GargoyleClaw, 3), (GargoyleDive, 2), (GargoyleStoneSkin, 2), (GargoyleHover, 2), (GargoyleGuard, 1), (GargoyleGaze, 1), (GargoyleRockfall, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free);
                 case "hellhound":
@@ -2065,6 +2121,7 @@ namespace HexDemo
             yield return GetDruidPool();
             yield return GetRewardPool();
             yield return GetCommonPool();
+            yield return GetEnemyPool();
         }
 
         private static HexCardDefinition DrawWeightedRewardCard(List<HexCardDefinition> candidates)
