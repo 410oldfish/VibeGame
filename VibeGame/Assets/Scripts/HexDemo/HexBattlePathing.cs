@@ -9,7 +9,8 @@ namespace HexDemo
             HexGrid grid,
             HexAxialCoord start,
             HexAxialCoord goal,
-            System.Func<HexAxialCoord, bool> isBlocked)
+            System.Func<HexAxialCoord, bool> isBlocked,
+            System.Func<HexAxialCoord, HexAxialCoord, bool> isTransitionBlocked = null)
         {
             if (!grid.IsCoordInside(start) || !grid.IsCoordInside(goal))
                 return null;
@@ -46,6 +47,8 @@ namespace HexDemo
                 foreach (var neighbor in grid.GetNeighbors(current))
                 {
                     if (!neighbor.Equals(goal) && isBlocked != null && isBlocked(neighbor))
+                        continue;
+                    if (isTransitionBlocked != null && isTransitionBlocked(current, neighbor))
                         continue;
 
                     int tentativeG = gScore[current] + 1;

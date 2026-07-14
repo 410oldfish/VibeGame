@@ -67,12 +67,25 @@ namespace HexDemo
             if (card.definition.id == "enemy_wall_advance")
             {
                 HexBattleUnit pair = GetLivingWallPair(wall);
-                if (pair != null)
+                HexAxialCoord destinationCore = HexAxialCoord.Neighbor(wall.State.coord, direction);
+                var destinationCoords = BuildFootprintCoords(destinationCore, wall.State.livingWall.footprintOffsets);
+                if (IsLivingWallStaticDestinationLegal(wall, destinationCoords, pair))
                 {
-                    HexAxialCoord destinationCore = HexAxialCoord.Neighbor(wall.State.coord, direction);
-                    danger = FootprintsAreAdjacent(
-                        BuildFootprintCoords(destinationCore, wall.State.livingWall.footprintOffsets),
-                        pair.OccupiedCoords);
+                    var reserved = new HashSet<HexAxialCoord>(destinationCoords);
+                    var previewedUnits = new HashSet<HexBattleUnit>();
+                    for (int i = 0; i < destinationCoords.Count; i++)
+                    {
+                        HexBattleUnit target = FindUnitAtCoord(destinationCoords[i], wall);
+                        if (target == null || target == pair || target.State.faction == wall.State.faction || !previewedUnits.Add(target))
+                            continue;
+
+                        ForcedMovementResult movement = ResolveForcedMovementInDirection(target, direction, reserved);
+                        if (movement == null || movement.path.Count <= 1)
+                        {
+                            danger = true;
+                            break;
+                        }
+                    }
                 }
             }
             wall.SetLivingWallIntentPreview(front, danger);
@@ -221,32 +234,41 @@ namespace HexDemo
                 pushedUnits.Add(occupant);
             }
 
-            bool closesPair = pair != null && FootprintsAreAdjacent(destinationCoords, pair.OccupiedCoords);
             var reserved = new HashSet<HexAxialCoord>(destinationCoords);
             bool blocked = false;
             for (int i = 0; i < pushedUnits.Count; i++)
             {
                 HexBattleUnit target = pushedUnits[i];
-                ForcedMovementResult movement = ResolveForcedMovementInDirection(target, direction, reserved, wall);
+                ForcedMovementResult movement = ResolveForcedMovementInDirection(target, direction, reserved);
                 if (movement == null || movement.path.Count <= 1)
                 {
                     blocked = true;
-                    if (closesPair && target.IsAlive)
-                    {
-                        ApplyDamageToUnit(target, HexLivingWallRules.SqueezeDamage, wall);
-                        if (!target.IsAlive)
-                            StartCoroutine(target.PlayDeathAndCleanup());
-                    }
+                    ApplyLivingWallSqueeze(target, wall);
                     continue;
                 }
 
                 yield return MoveUnitRoutine(target, movement.path, 0);
+                if (target.IsAlive && !target.State.coord.Equals(movement.actualDestination))
+                {
+                    blocked = true;
+                    ApplyLivingWallSqueeze(target, wall);
+                }
             }
 
             if (blocked)
                 yield break;
 
             yield return MoveUnitRoutine(wall, new List<HexAxialCoord> { wall.State.coord, destinationCore }, 0, directionTarget.State.coord);
+        }
+
+        private void ApplyLivingWallSqueeze(HexBattleUnit target, HexBattleUnit wall)
+        {
+            if (target == null || !target.IsAlive)
+                return;
+
+            ApplyDamageToUnit(target, HexLivingWallRules.SqueezeDamage, wall);
+            if (!target.IsAlive)
+                StartCoroutine(target.PlayDeathAndCleanup());
         }
 
         private bool IsLivingWallStaticDestinationLegal(
@@ -411,17 +433,12 @@ namespace HexDemo
             if (offsets == null || offsets.Count >= HexLivingWallRules.MaxFootprintSize)
                 return false;
 
-            var occupied = new HashSet<HexAxialCoord>(wall.OccupiedCoords);
-            var candidates = new HashSet<HexAxialCoord>();
-            foreach (HexAxialCoord coord in occupied)
-                for (int direction = 0; direction < HexAxialCoord.Directions.Length; direction++)
-                {
-                    HexAxialCoord candidate = HexAxialCoord.Neighbor(coord, direction);
-                    if (!occupied.Contains(candidate) &&
-                        IsWholeFootprintCellLegal(wall, candidate) &&
-                        HasLivingWallClearance(new[] { candidate }, wall, minimumOtherWallDistance))
-                        candidates.Add(candidate);
-                }
+            var candidates = HexLivingWallRules.GetHorizontalGrowthCandidates(offsets)
+                .Select(offset => HexLivingWallRules.ToWorldCoord(wall.State.coord, offset))
+                .Where(candidate =>
+                    IsWholeFootprintCellLegal(wall, candidate) &&
+                    HasLivingWallClearance(new[] { candidate }, wall, minimumOtherWallDistance))
+                .ToList();
             if (candidates.Count == 0)
                 return false;
 
@@ -564,36 +581,26 @@ namespace HexDemo
         private ForcedMovementResult ResolveForcedMovementInDirection(
             HexBattleUnit target,
             int direction,
-            ISet<HexAxialCoord> reservedCoords,
-            HexBattleUnit ignoredWall)
+            ISet<HexAxialCoord> reservedCoords)
         {
             HexAxialCoord start = target.State.coord;
-            if (target.State.toughness > 0 || target.State.cannotBeKnockedBackThisTurn)
-                return StationaryForcedMovement(start);
-
             HexAxialCoord intended = HexAxialCoord.Neighbor(start, direction);
-            var candidates = new Dictionary<HexAxialCoord, int> { [start] = 0 };
-            for (int directionIndex = 0; directionIndex < HexAxialCoord.Directions.Length; directionIndex++)
-            {
-                HexAxialCoord candidate = HexAxialCoord.Neighbor(start, directionIndex);
-                if (reservedCoords.Contains(candidate) || IsForcedDestinationBlocked(candidate, target, ignoredWall))
-                    continue;
-                candidates[candidate] = 1;
-            }
+            if (target.State.toughness > 0 || target.State.cannotBeKnockedBackThisTurn)
+                return StationaryForcedMovement(start, intended);
 
-            HexAxialCoord actual = SelectBestForcedMovementDestination(start, intended, direction, candidates);
+            if (reservedCoords.Contains(intended) || IsForcedDestinationBlocked(intended, target))
+                return StationaryForcedMovement(start, intended);
+
             return new ForcedMovementResult
             {
-                path = actual.Equals(start)
-                    ? new List<HexAxialCoord> { start }
-                    : new List<HexAxialCoord> { start, actual },
+                path = new List<HexAxialCoord> { start, intended },
                 intendedDestination = intended,
-                actualDestination = actual,
-                collided = !actual.Equals(intended),
+                actualDestination = intended,
+                collided = false,
             };
         }
 
-        private bool IsForcedDestinationBlocked(HexAxialCoord coord, HexBattleUnit movingUnit, HexBattleUnit ignoredWall)
+        private bool IsForcedDestinationBlocked(HexAxialCoord coord, HexBattleUnit movingUnit)
         {
             if (grid == null || !grid.IsCoordInside(coord))
                 return true;
@@ -602,7 +609,7 @@ namespace HexDemo
             for (int i = 0; i < _units.Count; i++)
             {
                 HexBattleUnit unit = _units[i];
-                if (unit == null || !unit.IsAlive || unit == movingUnit || unit == ignoredWall)
+                if (unit == null || !unit.IsAlive || unit == movingUnit)
                     continue;
                 if (unit.Occupies(coord))
                     return true;
@@ -610,10 +617,12 @@ namespace HexDemo
             return HasSceneObstacleAtCoord(coord, movingUnit);
         }
 
-        private static ForcedMovementResult StationaryForcedMovement(HexAxialCoord coord) => new()
+        private static ForcedMovementResult StationaryForcedMovement(
+            HexAxialCoord coord,
+            HexAxialCoord? intendedDestination = null) => new()
         {
             path = new List<HexAxialCoord> { coord },
-            intendedDestination = coord,
+            intendedDestination = intendedDestination ?? coord,
             actualDestination = coord,
             collided = true,
         };
@@ -714,20 +723,6 @@ namespace HexDemo
             for (int i = 0; i < offsets.Count; i++)
                 result.Add(HexLivingWallRules.ToWorldCoord(core, offsets[i]));
             return result;
-        }
-
-        private static bool FootprintsAreAdjacent(
-            IReadOnlyList<HexAxialCoord> first,
-            IReadOnlyList<HexAxialCoord> second)
-        {
-            if (first == null || second == null)
-                return false;
-            var secondSet = new HashSet<HexAxialCoord>(second);
-            for (int i = 0; i < first.Count; i++)
-                for (int direction = 0; direction < HexAxialCoord.Directions.Length; direction++)
-                    if (secondSet.Contains(HexAxialCoord.Neighbor(first[i], direction)))
-                        return true;
-            return false;
         }
 
         private int GetFootprintDistance(

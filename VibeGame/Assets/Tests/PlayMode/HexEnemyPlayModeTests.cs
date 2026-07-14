@@ -147,6 +147,8 @@ namespace HexDemo.PlayModeTests
             IList secondOccupied = GetOccupiedCoords(walls[1]);
             Assert.That(firstOccupied, Has.Count.EqualTo(3));
             Assert.That(secondOccupied, Has.Count.EqualTo(3));
+            AssertHorizontalLivingWallFootprint(walls[0], 3);
+            AssertHorizontalLivingWallFootprint(walls[1], 3);
 
             Type controllerType = RequireType("HexDemo.HexBattleController");
             var controller = UnityEngine.Object.FindObjectsByType(controllerType)
@@ -161,6 +163,140 @@ namespace HexDemo.PlayModeTests
                 .Cast<Component>()
                 .Count(component => component.gameObject.scene == scene);
             Assert.That(segmentCount, Is.EqualTo(6));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallMovement_BlocksWallCellsAndConnectedSegments()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            Component player = GetUnits(scene)
+                .Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            object playerState = GetState(player);
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            FieldInfo professionField = playerState.GetType().GetField("profession", InstanceFields);
+            FieldInfo formField = playerState.GetType().GetField("druidForm", InstanceFields);
+            Assert.That(professionField, Is.Not.Null);
+            Assert.That(formField, Is.Not.Null);
+            professionField.SetValue(playerState, Enum.ToObject(professionField.FieldType, 3));
+            formField.SetValue(playerState, Enum.ToObject(formField.FieldType, 2));
+            SetField(playerState, "currentMovePoints", 10);
+
+            MethodInfo buildPath = controllerType.GetMethod("BuildMovementPath", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(buildPath, Is.Not.Null);
+
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 1, 5));
+            object throughCell = buildPath.Invoke(controller, new[]
+            {
+                player,
+                Activator.CreateInstance(coordType, 3, 5),
+            });
+            Assert.That(throughCell, Is.Null);
+
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 1, 6));
+            object throughConnection = buildPath.Invoke(controller, new[]
+            {
+                player,
+                Activator.CreateInstance(coordType, 3, 5),
+            });
+            Assert.That(throughConnection, Is.Null);
+
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 0, 5));
+            var legalPath = buildPath.Invoke(controller, new[]
+            {
+                player,
+                Activator.CreateInstance(coordType, 1, 5),
+            }) as IList;
+            Assert.That(legalPath, Has.Count.EqualTo(2));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallAdvance_PushesPlayerOnlyInAdvanceDirection()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            var walls = units
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => GetCoord(GetField(GetState(component), "coord"), "q"))
+                .ToArray();
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            object movingWallState = GetState(walls[0]);
+            object pairedWallState = GetState(walls[1]);
+            SetField(movingWallState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(pairedWallState, "coord", Activator.CreateInstance(coordType, 7, 5));
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            SetField(playerState, "armor", 0);
+            SetField(playerState, "toughness", 0);
+            int healthBefore = (int)GetField(playerState, "currentHealth");
+
+            yield return RunLivingWallAdvance(controllerType, controller, walls[0]);
+
+            object movingWallCoord = GetField(movingWallState, "coord");
+            object playerCoord = GetField(playerState, "coord");
+            Assert.That(GetCoord(movingWallCoord, "q"), Is.EqualTo(5));
+            Assert.That(GetCoord(playerCoord, "q"), Is.EqualTo(6));
+            Assert.That(GetCoord(playerCoord, "r"), Is.EqualTo(5));
+            Assert.That(GetOccupiedCoords(walls[0]).Cast<object>().Any(coord => coord.Equals(playerCoord)), Is.False);
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(healthBefore));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallAdvance_WhenForwardPushFails_DealsSqueezeAndRollsBackWall()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            var walls = units
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => GetCoord(GetField(GetState(component), "coord"), "q"))
+                .ToArray();
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            object movingWallState = GetState(walls[0]);
+            object pairedWallState = GetState(walls[1]);
+            SetField(movingWallState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(pairedWallState, "coord", Activator.CreateInstance(coordType, 7, 5));
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            SetField(playerState, "armor", 0);
+            SetField(playerState, "toughness", 1);
+            SetField(playerState, "currentHealth", 100);
+
+            yield return RunLivingWallAdvance(controllerType, controller, walls[0]);
+
+            object movingWallCoord = GetField(movingWallState, "coord");
+            object playerCoord = GetField(playerState, "coord");
+            Assert.That(GetCoord(movingWallCoord, "q"), Is.EqualTo(4));
+            Assert.That(GetCoord(movingWallCoord, "r"), Is.EqualTo(5));
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(50));
+            Assert.That(GetOccupiedCoords(walls[0]).Cast<object>().Any(coord => coord.Equals(playerCoord)), Is.False);
 
             yield return SceneManager.UnloadSceneAsync(scene);
         }
@@ -265,6 +401,8 @@ namespace HexDemo.PlayModeTests
             Assert.That(InvokeStatic("HexDemo.HexAxialCoord", "Distance", playerCoord, secondCoord), Is.EqualTo(3));
             Assert.That(GetOccupiedCoords(walls[0]), Has.Count.EqualTo(4));
             Assert.That(GetOccupiedCoords(walls[1]), Has.Count.EqualTo(4));
+            AssertHorizontalLivingWallFootprint(walls[0], 4);
+            AssertHorizontalLivingWallFootprint(walls[1], 4);
             Assert.That(GetField(firstWallState, "reformPending"), Is.False);
             Assert.That(GetField(secondWallState, "reformPending"), Is.False);
             object grid = GetField(controller, "grid");
@@ -307,6 +445,8 @@ namespace HexDemo.PlayModeTests
             Assert.That(GetCoord(secondCoord, "r"), Is.EqualTo(5));
             Assert.That(GetOccupiedCoords(walls[0]), Has.Count.EqualTo(4));
             Assert.That(GetOccupiedCoords(walls[1]), Has.Count.EqualTo(3));
+            AssertHorizontalLivingWallFootprint(walls[0], 4);
+            AssertHorizontalLivingWallFootprint(walls[1], 3);
 
             yield return SceneManager.UnloadSceneAsync(scene);
         }
@@ -391,6 +531,25 @@ namespace HexDemo.PlayModeTests
             PropertyInfo property = unit.GetType().GetProperty("OccupiedCoords", BindingFlags.Instance | BindingFlags.Public);
             Assert.That(property, Is.Not.Null);
             return property.GetValue(unit) as IList;
+        }
+
+        private static void AssertHorizontalLivingWallFootprint(Component wall, int expectedSize)
+        {
+            object core = GetField(GetState(wall), "coord");
+            int coreQ = GetCoord(core, "q");
+            int[] rows = GetOccupiedCoords(wall)
+                .Cast<object>()
+                .Select(coord =>
+                {
+                    Assert.That(GetCoord(coord, "q"), Is.EqualTo(coreQ));
+                    return GetCoord(coord, "r");
+                })
+                .OrderBy(row => row)
+                .ToArray();
+
+            Assert.That(rows, Has.Length.EqualTo(expectedSize));
+            for (int i = 1; i < rows.Length; i++)
+                Assert.That(rows[i], Is.EqualTo(rows[i - 1] + 1));
         }
 
         private static IEnumerator RunCharge(Type controllerType, MonoBehaviour controller, Component enemy, Component player)

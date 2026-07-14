@@ -129,16 +129,78 @@ namespace HexDemo.EditorTests
         [Test]
         public void LivingWallRules_CreateConnectedFootprintAndCeilBreakDamage()
         {
-            var offsets = new List<HexAxialCoord>
-            {
-                new(0, 0),
-                new(0, -1),
-                new(0, 1),
-            };
+            var offsets = HexLivingWallRules.CreateInitialOffsets(
+                null,
+                new HexAxialCoord(4, 4),
+                new HexAxialCoord(8, 1));
             Assert.That(offsets, Has.Count.EqualTo(HexLivingWallRules.InitialFootprintSize));
             Assert.That(HexLivingWallRules.IsConnected(offsets), Is.True);
+            Assert.That(HexLivingWallRules.IsHorizontalLine(offsets), Is.True);
             Assert.That(HexLivingWallRules.GetBreakDamage(34), Is.EqualTo(7));
             Assert.That(HexLivingWallRules.GetBreakDamage(60), Is.EqualTo(12));
+        }
+
+        [Test]
+        public void LivingWallRules_GrowsOnlyFromHorizontalEndpointsFromThreeToSixCells()
+        {
+            var offsets = HexLivingWallRules.CreateInitialOffsets(
+                null,
+                new HexAxialCoord(0, 0),
+                new HexAxialCoord(3, -2));
+
+            for (int expectedSize = HexLivingWallRules.InitialFootprintSize;
+                 expectedSize <= HexLivingWallRules.MaxFootprintSize;
+                 expectedSize++)
+            {
+                Assert.That(offsets, Has.Count.EqualTo(expectedSize));
+                Assert.That(HexLivingWallRules.IsHorizontalLine(offsets), Is.True);
+                Assert.That(offsets.All(offset => offset.q == 0), Is.True);
+
+                if (expectedSize == HexLivingWallRules.MaxFootprintSize)
+                    break;
+
+                List<HexAxialCoord> candidates = HexLivingWallRules.GetHorizontalGrowthCandidates(offsets);
+                Assert.That(candidates, Has.Count.EqualTo(2));
+                Assert.That(candidates.All(offset => offset.q == 0), Is.True);
+                offsets.Add(candidates[expectedSize % 2]);
+            }
+
+            Assert.That(HexLivingWallRules.GetHorizontalGrowthCandidates(offsets), Is.Empty);
+        }
+
+        [Test]
+        public void LivingWallRules_MovementCannotCrossWallCellsOrConnectedSegments()
+        {
+            var gridObject = new GameObject("LivingWallMovementGrid");
+            try
+            {
+                var grid = gridObject.AddComponent<HexGrid>();
+                var occupied = new List<HexAxialCoord>
+                {
+                    new(2, 5),
+                    new(2, 6),
+                };
+
+                Assert.That(HexLivingWallRules.MovementSegmentCrossesWall(
+                    grid,
+                    new HexAxialCoord(1, 5),
+                    new HexAxialCoord(3, 5),
+                    occupied), Is.True);
+                Assert.That(HexLivingWallRules.MovementSegmentCrossesWall(
+                    grid,
+                    new HexAxialCoord(1, 6),
+                    new HexAxialCoord(3, 5),
+                    occupied), Is.True);
+                Assert.That(HexLivingWallRules.MovementSegmentCrossesWall(
+                    grid,
+                    new HexAxialCoord(0, 5),
+                    new HexAxialCoord(1, 5),
+                    occupied), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(gridObject);
+            }
         }
 
         [Test]

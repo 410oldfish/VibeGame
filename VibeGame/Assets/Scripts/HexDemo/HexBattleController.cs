@@ -1292,8 +1292,15 @@ namespace HexDemo
             _ui.Refresh();
         }
 
-        private IEnumerator MoveUnitRoutine(HexBattleUnit unit, List<HexAxialCoord> path, int moveCost, HexAxialCoord? towardTargetCoord = null)
+        private IEnumerator MoveUnitRoutine(
+            HexBattleUnit unit,
+            List<HexAxialCoord> path,
+            int moveCost,
+            HexAxialCoord? towardTargetCoord = null)
         {
+            if (IsLivingWallMovementPathBlocked(path, unit))
+                yield break;
+
             _busy = true;
             int movedDistance = path != null ? Mathf.Max(0, path.Count - 1) : Mathf.Max(0, moveCost);
             if (movedDistance > 0 && unit.State.entangle > 0)
@@ -2167,7 +2174,12 @@ namespace HexDemo
                 if (IsMovementBlocked(neighbor, enemy))
                     continue;
 
-                var path = HexBattlePathing.FindPath(grid, enemy.State.coord, neighbor, coord => IsMovementBlocked(coord, enemy));
+                var path = HexBattlePathing.FindPath(
+                    grid,
+                    enemy.State.coord,
+                    neighbor,
+                    coord => IsMovementBlocked(coord, enemy),
+                    (from, to) => IsLivingWallMovementTransitionBlocked(from, to, enemy));
                 if (path == null || path.Count < 2)
                     continue;
 
@@ -2775,6 +2787,8 @@ namespace HexDemo
                 yield break;
 
             var path = new List<HexAxialCoord> { source.State.coord, destination };
+            if (IsLivingWallMovementPathBlocked(path, source))
+                yield break;
             yield return MoveUnitRoutine(source, path, 0);
         }
 
@@ -4535,10 +4549,16 @@ namespace HexDemo
                 if (distance <= 0 || distance > maxSteps || IsMovementDestinationBlocked(destination, unit))
                     return null;
 
-                return new List<HexAxialCoord> { unit.State.coord, destination };
+                var directPath = new List<HexAxialCoord> { unit.State.coord, destination };
+                return IsLivingWallMovementPathBlocked(directPath, unit) ? null : directPath;
             }
 
-            var path = HexBattlePathing.FindPath(grid, unit.State.coord, destination, coord => IsMovementBlocked(coord, unit));
+            var path = HexBattlePathing.FindPath(
+                grid,
+                unit.State.coord,
+                destination,
+                coord => IsMovementBlocked(coord, unit),
+                (from, to) => IsLivingWallMovementTransitionBlocked(from, to, unit));
             if (path == null || path.Count < 2 || path.Count - 1 > maxSteps)
                 return null;
 
@@ -4590,8 +4610,13 @@ namespace HexDemo
 
                 List<HexAxialCoord> path = IsToadJumpMovement(movingUnit)
                     ? new List<HexAxialCoord> { movingUnit.State.coord, candidate }
-                    : HexBattlePathing.FindPath(grid, movingUnit.State.coord, candidate, coord => IsMovementBlocked(coord, movingUnit));
-                if (path == null || path.Count < 2)
+                    : HexBattlePathing.FindPath(
+                        grid,
+                        movingUnit.State.coord,
+                        candidate,
+                        coord => IsMovementBlocked(coord, movingUnit),
+                        (from, to) => IsLivingWallMovementTransitionBlocked(from, to, movingUnit));
+                if (path == null || path.Count < 2 || IsLivingWallMovementPathBlocked(path, movingUnit))
                     continue;
 
                 int steps = path.Count - 1;
@@ -4670,7 +4695,12 @@ namespace HexDemo
                 if (IsMovementDestinationBlocked(candidate, unit))
                     continue;
 
-                var path = HexBattlePathing.FindPath(grid, unit.State.coord, candidate, coord => IsMovementBlocked(coord, unit));
+                var path = HexBattlePathing.FindPath(
+                    grid,
+                    unit.State.coord,
+                    candidate,
+                    coord => IsMovementBlocked(coord, unit),
+                    (from, to) => IsLivingWallMovementTransitionBlocked(from, to, unit));
                 if (path == null || path.Count < 2 || path.Count - 1 > maxSteps)
                     continue;
 
@@ -4895,8 +4925,13 @@ namespace HexDemo
 
                 List<HexAxialCoord> path = IsToadJumpMovement(movingUnit)
                     ? new List<HexAxialCoord> { movingUnit.State.coord, candidate }
-                    : HexBattlePathing.FindPath(grid, movingUnit.State.coord, candidate, coord => IsMovementBlocked(coord, movingUnit));
-                if (path == null || path.Count < 2)
+                    : HexBattlePathing.FindPath(
+                        grid,
+                        movingUnit.State.coord,
+                        candidate,
+                        coord => IsMovementBlocked(coord, movingUnit),
+                        (from, to) => IsLivingWallMovementTransitionBlocked(from, to, movingUnit));
+                if (path == null || path.Count < 2 || IsLivingWallMovementPathBlocked(path, movingUnit))
                     continue;
 
                 float score = path.Count + GetStraightLineDistance(candidate, targetCoord);
@@ -4917,7 +4952,8 @@ namespace HexDemo
             for (int step = 0; step < maxDistance; step++)
             {
                 HexAxialCoord next = HexAxialCoord.Neighbor(current, directionIndex);
-                if (grid == null || !grid.IsCoordInside(next) || IsMovementBlocked(next, movingUnit))
+                if (grid == null || !grid.IsCoordInside(next) || IsMovementBlocked(next, movingUnit) ||
+                    IsLivingWallMovementTransitionBlocked(current, next, movingUnit))
                     break;
 
                 path.Add(next);
@@ -5760,10 +5796,16 @@ namespace HexDemo
                 if (IsMovementDestinationBlocked(destination, unit))
                     return null;
 
-                return new List<HexAxialCoord> { unit.State.coord, destination };
+                var directPath = new List<HexAxialCoord> { unit.State.coord, destination };
+                return IsLivingWallMovementPathBlocked(directPath, unit) ? null : directPath;
             }
 
-            return HexBattlePathing.FindPath(grid, unit.State.coord, destination, coord => IsMovementBlocked(coord, unit));
+            return HexBattlePathing.FindPath(
+                grid,
+                unit.State.coord,
+                destination,
+                coord => IsMovementBlocked(coord, unit),
+                (from, to) => IsLivingWallMovementTransitionBlocked(from, to, unit));
         }
 
         private int GetMovementCost(HexBattleUnit unit, HexAxialCoord destination, List<HexAxialCoord> path)
@@ -5784,10 +5826,45 @@ namespace HexDemo
             if (grid.TryGetTile(coord, out var tile) && tile != null && !TileCanEnter(tile))
                 return true;
 
+            if (movingUnit?.State?.faction == HexBattleFaction.Player && FindLivingWallAtCoord(coord, movingUnit) != null)
+                return true;
+
             if (CanIgnoreOccupiedTilesWhileMoving(movingUnit))
                 return false;
 
             return IsOccupied(coord, movingUnit);
+        }
+
+        private bool IsLivingWallMovementTransitionBlocked(
+            HexAxialCoord from,
+            HexAxialCoord to,
+            HexBattleUnit movingUnit)
+        {
+            if (grid == null || movingUnit?.State?.faction != HexBattleFaction.Player)
+                return false;
+
+            List<HexBattleUnit> walls = GetLivingWalls();
+            for (int i = 0; i < walls.Count; i++)
+            {
+                if (HexLivingWallRules.MovementSegmentCrossesWall(grid, from, to, walls[i].OccupiedCoords))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool IsLivingWallMovementPathBlocked(
+            IReadOnlyList<HexAxialCoord> path,
+            HexBattleUnit movingUnit)
+        {
+            if (path == null || path.Count < 2)
+                return false;
+
+            for (int i = 1; i < path.Count; i++)
+                if (IsLivingWallMovementTransitionBlocked(path[i - 1], path[i], movingUnit))
+                    return true;
+
+            return false;
         }
 
         private bool IsForcedMovementBlocked(HexAxialCoord coord, HexBattleUnit movingUnit)
@@ -5889,7 +5966,8 @@ namespace HexDemo
 
                 foreach (var neighbor in grid.GetNeighbors(current))
                 {
-                    if (IsForcedMovementBlocked(neighbor, movingUnit))
+                    if (IsForcedMovementBlocked(neighbor, movingUnit) ||
+                        IsLivingWallMovementTransitionBlocked(current, neighbor, movingUnit))
                         continue;
 
                     int nextCost = currentCost + 1;
@@ -5958,7 +6036,12 @@ namespace HexDemo
             if (destination.Equals(start))
                 return new List<HexAxialCoord> { start };
 
-            return HexBattlePathing.FindPath(grid, start, destination, coord => IsForcedMovementBlocked(coord, movingUnit));
+            return HexBattlePathing.FindPath(
+                grid,
+                start,
+                destination,
+                coord => IsForcedMovementBlocked(coord, movingUnit),
+                (from, to) => IsLivingWallMovementTransitionBlocked(from, to, movingUnit));
         }
 
         private bool IsPathMovingTowardTarget(IReadOnlyList<HexAxialCoord> path, HexAxialCoord targetCoord)
@@ -6476,6 +6559,10 @@ namespace HexDemo
                     if (IsMovementDestinationBlocked(tile.coord, unit))
                         continue;
 
+                    var directPath = new List<HexAxialCoord> { unit.State.coord, tile.coord };
+                    if (IsLivingWallMovementPathBlocked(directPath, unit))
+                        continue;
+
                     int distance = GetDistanceToUnit(tile.coord, unit);
                     if (distance <= maxMoveCost)
                         jumped[tile.coord] = distance;
@@ -6497,7 +6584,8 @@ namespace HexDemo
 
                 foreach (var neighbor in grid.GetNeighbors(current))
                 {
-                    if (!grid.IsCoordInside(neighbor) || IsMovementDestinationBlocked(neighbor, unit))
+                    if (!grid.IsCoordInside(neighbor) || IsMovementDestinationBlocked(neighbor, unit) ||
+                        IsLivingWallMovementTransitionBlocked(current, neighbor, unit))
                         continue;
 
                     int nextCost = currentCost + 1;
