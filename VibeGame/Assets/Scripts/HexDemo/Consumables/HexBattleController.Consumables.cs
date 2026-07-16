@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace HexDemo
 {
@@ -130,7 +131,7 @@ namespace HexDemo
         {
             if (!Input.GetMouseButtonDown(0) || (!(_pendingConsumable?.Definition != null) && !_pendingStealSkill))
                 return false;
-            if (UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+            if (IsPointerOverConsumableBlockingUi())
                 return true;
 
             if (_pendingStealSkill)
@@ -169,6 +170,31 @@ namespace HexDemo
 
             _ui?.Refresh();
             return true;
+        }
+
+        private bool IsPointerOverConsumableBlockingUi()
+        {
+            if (_ui != null && _ui.IsBlockingWorldClick())
+                return true;
+
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null)
+                return false;
+
+            var eventData = new PointerEventData(eventSystem) { position = Input.mousePosition };
+            var raycastResults = new List<RaycastResult>();
+            eventSystem.RaycastAll(eventData, raycastResults);
+            for (int i = 0; i < raycastResults.Count; i++)
+            {
+                var hitObject = raycastResults[i].gameObject;
+                if (ExecuteEvents.GetEventHandler<IPointerClickHandler>(hitObject) != null ||
+                    ExecuteEvents.GetEventHandler<IBeginDragHandler>(hitObject) != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool ResolveSelfConsumable(HexConsumableInstance item, HexConsumableDefinition definition)

@@ -9,7 +9,8 @@ namespace HexDemo
     {
         public Camera rayCamera;
         public GameObject campfireObject;
-        public int healAmount = 10;
+        [Range(0f, 1f)]
+        public float healPercent = 0.25f;
 
         private HexBattleUnit _playerUnit;
         private Canvas _canvas;
@@ -58,6 +59,7 @@ namespace HexDemo
                 return;
 
             _usedCampfire = true;
+            int healAmount = GetHealAmount();
             _playerUnit.State.currentHealth = Mathf.Min(_playerUnit.State.maxHealth, _playerUnit.State.currentHealth + healAmount);
             if (_grid != null)
                 _playerUnit.SnapTo(_grid, 0.03f);
@@ -113,7 +115,15 @@ namespace HexDemo
 
             _statusLabel.text = _usedCampfire
                 ? $"Campfire used\nHP {_playerUnit.State.currentHealth}/{_playerUnit.State.maxHealth}"
-                : $"Campfire heals {healAmount}\nHP {_playerUnit.State.currentHealth}/{_playerUnit.State.maxHealth}";
+                : $"Click the campfire to heal {GetHealAmount()} HP ({Mathf.RoundToInt(healPercent * 100f)}% Max HP)\nHP {_playerUnit.State.currentHealth}/{_playerUnit.State.maxHealth}";
+        }
+
+        private int GetHealAmount()
+        {
+            if (_playerUnit?.State == null)
+                return 0;
+
+            return Mathf.CeilToInt(_playerUnit.State.maxHealth * Mathf.Clamp01(healPercent));
         }
 
         private static RectTransform CreatePanel(Transform parent, string name, Vector2 anchoredPosition, Vector2 size, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot)
