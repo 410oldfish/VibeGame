@@ -25,3 +25,11 @@ VibeGame/YooAsset.EditorExtension.csproj
 VibeGame/YooAsset.MiniGame.csproj
 VibeGame/YooAsset.RuntimeExtension.csproj
 VibeGame/UserSettings/Layouts/default-6000.dwlt
+
+# Unity/VS generated (local)
+VibeGame/.vs/
+VibeGame/*.sln
+VibeGame/VibeGame.slnx
+VibeGame/HexDemo.PlayModeTests.csproj
+**/__pycache__/
+.obsidian/workspace.json
