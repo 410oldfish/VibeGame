@@ -256,7 +256,10 @@ namespace HexDemo
             }
 
             if (blocked)
+            {
+                yield return ResolveDeathsAndBattleEndRoutine();
                 yield break;
+            }
 
             yield return MoveUnitRoutine(wall, new List<HexAxialCoord> { wall.State.coord, destinationCore }, 0, directionTarget.State.coord);
         }
@@ -267,8 +270,6 @@ namespace HexDemo
                 return;
 
             ApplyDamageToUnit(target, HexLivingWallRules.SqueezeDamage, wall);
-            if (!target.IsAlive)
-                StartCoroutine(target.PlayDeathAndCleanup());
         }
 
         private bool IsLivingWallStaticDestinationLegal(
@@ -521,15 +522,19 @@ namespace HexDemo
 
             if (wall.State.livingWall.isOffspring)
             {
-                wall.State.currentHealth = 0;
+                ApplyDamageToUnit(
+                    wall,
+                    wall.State.currentHealth + wall.State.armor,
+                    _playerUnit,
+                    HexDamageTags.Environment);
                 wall.RefreshLabel();
-                StartCoroutine(wall.PlayDeathAndCleanup());
+                StartCoroutine(ResolveDeathsAndBattleEndRoutine());
                 return true;
             }
 
             ApplyDamageToUnit(wall, HexLivingWallRules.GetBreakDamage(wall.State.maxHealth), _playerUnit);
             if (!wall.IsAlive)
-                StartCoroutine(wall.PlayDeathAndCleanup());
+                StartCoroutine(ResolveDeathsAndBattleEndRoutine());
             wall.RefreshLabel();
             return true;
         }

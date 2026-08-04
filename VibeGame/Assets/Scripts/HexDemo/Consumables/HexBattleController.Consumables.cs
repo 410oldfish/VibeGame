@@ -352,8 +352,10 @@ namespace HexDemo
 
             if (unit.State.poison > 0)
             {
-                ApplyDamageToUnit(unit, unit.State.poison, null);
+                ApplyDamageToUnit(unit, unit.State.poison, null, HexDamageTags.Status);
                 unit.State.poison = Mathf.Max(0, unit.State.poison - 1);
+                if (!unit.IsAlive)
+                    return;
             }
 
             if (unit.State.regeneration > 0)
@@ -617,10 +619,7 @@ namespace HexDemo
 
         private IEnumerator ResolveConsumableDeath(HexBattleUnit target)
         {
-            if (target != null && !target.IsAlive)
-                yield return target.PlayDeathAndCleanup();
-            if (_enemyUnits.All(enemy => enemy == null || !enemy.IsAlive))
-                yield return HandleBattleEnd(true);
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
     }
 }

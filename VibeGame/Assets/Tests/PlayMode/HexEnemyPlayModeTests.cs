@@ -553,6 +553,141 @@ namespace HexDemo.PlayModeTests
             yield return SceneManager.UnloadSceneAsync(scene);
         }
 
+        [UnityTest]
+        public IEnumerator DirectAttack_ThornsKillsLastEnemyAndResolvesVictory()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_GoblinCaptain");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            Component enemy = units.Single(component => GetField(GetState(component), "faction").ToString() == "Enemy");
+            object playerState = GetState(player);
+            object enemyState = GetState(enemy);
+            SetField(playerState, "currentHealth", 30);
+            SetField(playerState, "armor", 0);
+            SetField(playerState, "thorns", 10);
+            SetField(enemyState, "currentHealth", 5);
+            SetField(enemyState, "armor", 0);
+
+            yield return RunDirectAttack(controllerType, controller, enemy, player, 1);
+
+            Assert.That(GetField(enemyState, "currentHealth"), Is.Zero);
+            Assert.That(GetField(controller, "_battleFinished"), Is.True);
+            Assert.That(GetField(controller, "_lastBattlePlayerWon"), Is.EqualTo(true));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator DirectAttack_LethalTargetSkipsStatusesKnockbackAndResolvesDefeat()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_Default");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            Component enemy = units.First(component => GetField(GetState(component), "faction").ToString() == "Enemy");
+            object playerState = GetState(player);
+            object originalCoord = GetField(playerState, "coord");
+            SetField(playerState, "currentHealth", 5);
+            SetField(playerState, "armor", 0);
+
+            yield return RunDirectAttack(
+                controllerType,
+                controller,
+                enemy,
+                player,
+                6,
+                bleed: 2,
+                weak: 2,
+                vulnerable: 2,
+                knockback: 1,
+                addDaze: 1);
+
+            Assert.That(GetField(playerState, "currentHealth"), Is.Zero);
+            Assert.That(GetField(playerState, "bleed"), Is.Zero);
+            Assert.That(GetField(playerState, "weak"), Is.Zero);
+            Assert.That(GetField(playerState, "vulnerable"), Is.Zero);
+            Assert.That(GetField(playerState, "coord"), Is.EqualTo(originalCoord));
+            Assert.That(GetField(controller, "_lastBattlePlayerWon"), Is.EqualTo(false));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallLethalSqueeze_ResolvesPlayerDefeat()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            var walls = units
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => GetCoord(GetField(GetState(component), "coord"), "q"))
+                .ToArray();
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            SetField(GetState(walls[0]), "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(GetState(walls[1]), "coord", Activator.CreateInstance(coordType, 7, 5));
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            SetField(playerState, "armor", 0);
+            SetField(playerState, "toughness", 1);
+            SetField(playerState, "currentHealth", 50);
+
+            yield return RunLivingWallAdvance(controllerType, controller, walls[0]);
+
+            Assert.That(GetField(playerState, "currentHealth"), Is.Zero);
+            Assert.That(GetField(controller, "_lastBattlePlayerWon"), Is.EqualTo(false));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator PoisonLethal_DoesNotRegenerateAndSimultaneousDeathPrefersDefeat()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_Default");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            object playerState = GetState(player);
+            SetField(playerState, "currentHealth", 3);
+            SetField(playerState, "poison", 5);
+            SetField(playerState, "regeneration", 10);
+
+            MethodInfo turnStart = controllerType.GetMethod("ResolveConsumableTurnStart", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(turnStart, Is.Not.Null);
+            turnStart.Invoke(controller, new object[] { player });
+            Assert.That(GetField(playerState, "currentHealth"), Is.Zero);
+            Assert.That(GetField(playerState, "regeneration"), Is.EqualTo(10));
+
+            foreach (Component enemy in units.Where(component => GetField(GetState(component), "faction").ToString() == "Enemy"))
+                SetField(GetState(enemy), "currentHealth", 0);
+            yield return RunDeathResolution(controllerType, controller);
+
+            Assert.That(GetField(controller, "_lastBattlePlayerWon"), Is.EqualTo(false));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
         private static Scene BuildScenario(string resourcePath)
         {
             Scene scene = SceneManager.CreateScene($"EnemyPlayMode_{Guid.NewGuid():N}");
@@ -649,6 +784,36 @@ namespace HexDemo.PlayModeTests
             MethodInfo method = controllerType.GetMethod("ResolveLivingWallAdvance", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
             var routine = method.Invoke(controller, new object[] { wall }) as IEnumerator;
+            Assert.That(routine, Is.Not.Null);
+            yield return controller.StartCoroutine(routine);
+        }
+
+        private static IEnumerator RunDirectAttack(
+            Type controllerType,
+            MonoBehaviour controller,
+            Component source,
+            Component target,
+            int damage,
+            int bleed = 0,
+            int weak = 0,
+            int vulnerable = 0,
+            int knockback = 0,
+            int addDaze = 0)
+        {
+            MethodInfo method = controllerType.GetMethod("ResolveDirectAttackRoutine", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var routine = method.Invoke(
+                controller,
+                new object[] { source, target, damage, bleed, weak, vulnerable, knockback, addDaze, null }) as IEnumerator;
+            Assert.That(routine, Is.Not.Null);
+            yield return controller.StartCoroutine(routine);
+        }
+
+        private static IEnumerator RunDeathResolution(Type controllerType, MonoBehaviour controller)
+        {
+            MethodInfo method = controllerType.GetMethod("ResolveDeathsAndBattleEndRoutine", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var routine = method.Invoke(controller, null) as IEnumerator;
             Assert.That(routine, Is.Not.Null);
             yield return controller.StartCoroutine(routine);
         }

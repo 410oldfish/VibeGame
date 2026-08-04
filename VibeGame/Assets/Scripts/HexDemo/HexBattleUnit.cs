@@ -354,7 +354,11 @@ namespace HexDemo
             if (State.burn > 0)
             {
                 if (State.druidForm != HexDruidFormType.LavaLizard)
-                    ApplyDamage(State.burn);
+                    HexDamageResolver.Resolve(new HexDamageRequest(
+                        this,
+                        this,
+                        State.burn,
+                        HexDamageTags.Status | HexDamageTags.SelfDamage));
                 State.burn /= 2;
             }
 
@@ -587,7 +591,7 @@ namespace HexDemo
 
         public void Heal(int amount)
         {
-            if (amount <= 0)
+            if (amount <= 0 || !IsAlive)
                 return;
 
             State.currentHealth = Mathf.Min(State.maxHealth, State.currentHealth + amount);
@@ -599,19 +603,21 @@ namespace HexDemo
             State.currentMovePoints = Mathf.Max(0, State.currentMovePoints - Mathf.Max(0, amount));
         }
 
-        public int ApplyDamage(int amount)
+        internal HexDamageResult ApplyResolvedDamage(int requestedDamage, int amount)
         {
+            int beforeArmor = State.armor;
+            int beforeHealth = State.currentHealth;
             if (State.frozen > 0 || State.invincible > 0)
             {
                 RefreshHealthBar();
-                return 0;
+                return HexDamageResult.None(requestedDamage);
             }
 
             if (State.holyShield > 0)
             {
                 State.holyShield = Mathf.Max(0, State.holyShield - 1);
                 RefreshHealthBar();
-                return 0;
+                return HexDamageResult.None(requestedDamage);
             }
 
             int remaining = Mathf.Max(0, amount);
@@ -621,7 +627,15 @@ namespace HexDemo
             remaining -= absorbed;
             State.currentHealth = Mathf.Max(0, State.currentHealth - remaining);
             RefreshHealthBar();
-            return remaining;
+            int armorLost = Mathf.Max(0, beforeArmor - State.armor);
+            int healthLost = Mathf.Max(0, beforeHealth - State.currentHealth);
+            return new HexDamageResult(
+                requestedDamage,
+                amount,
+                armorLost,
+                healthLost,
+                healthLost <= 0 && armorLost <= 0,
+                beforeHealth > 0 && State.currentHealth <= 0);
         }
 
         public void ApplyBleed(int amount)

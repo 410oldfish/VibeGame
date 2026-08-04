@@ -280,6 +280,7 @@ namespace HexDemo
         public string runtimeId;
         public HexCardDefinition definition;
         public bool upgraded;
+        public int battleAmountModifier;
         public int temporaryCostModifier;
         public bool costsNoEnergyThisTurn;
         public bool costsNoEnergyThisBattle;
@@ -292,6 +293,13 @@ namespace HexDemo
             runtimeId = Guid.NewGuid().ToString("N");
             this.definition = definition;
             upgraded = definition != null && definition.upgraded;
+        }
+
+        public int EffectiveAmount => Mathf.Max(0, (definition?.amount ?? 0) + battleAmountModifier);
+
+        public void IncreaseBattleAmount(int amount)
+        {
+            battleAmountModifier += Mathf.Max(0, amount);
         }
 
         public bool HasRuntimeFlag(string flagId) => _runtimeFlags.Has(flagId);
@@ -310,6 +318,106 @@ namespace HexDemo
         public void ResetRoundFlags() => _runtimeFlags.ResetRoundFlags();
 
         public void ResetActionFlags() => _runtimeFlags.ResetActionFlags();
+    }
+
+    [Flags]
+    public enum HexDamageTags
+    {
+        None = 0,
+        Attack = 1 << 0,
+        Status = 1 << 1,
+        Environment = 1 << 2,
+        Reaction = 1 << 3,
+        SelfDamage = 1 << 4,
+    }
+
+    public readonly struct HexAttackModifierSnapshot
+    {
+        public readonly int nextAttackBonus;
+        public readonly bool doubleNextAttackBonus;
+        public readonly bool weak;
+        public readonly int damageMultiplier;
+        public readonly int vigor;
+        public readonly bool momentum;
+
+        public HexAttackModifierSnapshot(
+            int nextAttackBonus,
+            bool doubleNextAttackBonus,
+            bool weak,
+            int damageMultiplier,
+            int vigor,
+            bool momentum)
+        {
+            this.nextAttackBonus = Mathf.Max(0, nextAttackBonus);
+            this.doubleNextAttackBonus = doubleNextAttackBonus;
+            this.weak = weak;
+            this.damageMultiplier = Mathf.Max(1, damageMultiplier);
+            this.vigor = Mathf.Max(0, vigor);
+            this.momentum = momentum;
+        }
+
+        public bool ConsumesNextAttackBonus => nextAttackBonus > 0;
+        public bool ConsumesVigor => vigor > 0;
+        public bool ConsumesMomentum => momentum;
+    }
+
+    public readonly struct HexDamageRequest
+    {
+        public readonly HexBattleUnit source;
+        public readonly HexBattleUnit target;
+        public readonly int requestedDamage;
+        public readonly HexDamageTags tags;
+        public readonly HexAttackModifierSnapshot? attackModifierSnapshot;
+        public readonly float targetDamageMultiplier;
+
+        public HexDamageRequest(
+            HexBattleUnit source,
+            HexBattleUnit target,
+            int requestedDamage,
+            HexDamageTags tags,
+            HexAttackModifierSnapshot? attackModifierSnapshot = null,
+            float targetDamageMultiplier = 1f)
+        {
+            this.source = source;
+            this.target = target;
+            this.requestedDamage = Mathf.Max(0, requestedDamage);
+            this.tags = tags;
+            this.attackModifierSnapshot = attackModifierSnapshot;
+            this.targetDamageMultiplier = Mathf.Max(0f, targetDamageMultiplier);
+        }
+
+        public bool IsAttack => (tags & HexDamageTags.Attack) != 0;
+    }
+
+    public readonly struct HexDamageResult
+    {
+        public readonly int requestedDamage;
+        public readonly int finalDamage;
+        public readonly int armorLost;
+        public readonly int healthLost;
+        public readonly bool fullyBlocked;
+        public readonly bool killed;
+
+        public HexDamageResult(
+            int requestedDamage,
+            int finalDamage,
+            int armorLost,
+            int healthLost,
+            bool fullyBlocked,
+            bool killed)
+        {
+            this.requestedDamage = Mathf.Max(0, requestedDamage);
+            this.finalDamage = Mathf.Max(0, finalDamage);
+            this.armorLost = Mathf.Max(0, armorLost);
+            this.healthLost = Mathf.Max(0, healthLost);
+            this.fullyBlocked = fullyBlocked;
+            this.killed = killed;
+        }
+
+        public static HexDamageResult None(int requestedDamage = 0)
+        {
+            return new HexDamageResult(requestedDamage, 0, 0, 0, true, false);
+        }
     }
 
     [Serializable]
