@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9d6eef3609574a429f4d73131564263, type: 3}
+  m_Name: BattleSandbox_OrcWarrior
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexBattleSandboxScenarioSO
+  useFixedRandomSeed: 1
+  randomSeed: 8404
+  quickBottomCard: 0
+  terrain:
+    width: 11
+    height: 11
+    hexSize: 0.55
+    tileY: 0
+    tileDepth: 0.45
+    heightStep: 0
+    generateFeatureTerrain: 0
+    highGroundChance: 0
+    ruinChance: 0
+    overrides:
+    - coord: {x: 2, y: 2}
+      zone: 0
+      baseTerrain: 0
+      structureType: 1
+      propId: 
+      structureHp: 0
+      pickupType: 0
+      pickupAmount: 0
+    - coord: {x: 2, y: 3}
+      zone: 0
+      baseTerrain: 0
+      structureType: 2
+      propId: 
+      structureHp: 3
+      pickupType: 0
+      pickupAmount: 0
+  player:
+    profession: 1
+    displayName: Hero
+    maxHealth: 70
+    currentHealth: 70
+    maxEnergy: 3
+    drawPerTurn: 4
+    maxMovePoints: 2
+    attackRange: 1
+    spawnCoord: {x: 3, y: 5}
+    deckCardIds:
+    - warrior_strike
+    - warrior_strike
+    - warrior_strike
+    - warrior_strike
+    - warrior_defend
+    - warrior_defend
+    - warrior_defend
+    - warrior_defend
+    - warrior_move_forward
+  enemies:
+  - enemyType: 11
+    legacyEnemyDefinitionId: 
+    displayNameOverride: 
+    spawnCoord: {x: 7, y: 5}
+    livingWallPartnerSpawnCoord: {x: 3, y: 5}
+    maxHealthOverride: 22
+    currentHealthOverride: 22
+    deckCardIds: []
+  - enemyType: 0
+    legacyEnemyDefinitionId: 
+    displayNameOverride: 
+    spawnCoord: {x: 7, y: 4}
+    livingWallPartnerSpawnCoord: {x: 3, y: 5}
+    maxHealthOverride: 12
+    currentHealthOverride: 12
+    deckCardIds: []
+  - enemyType: 4
+    legacyEnemyDefinitionId: 
+    displayNameOverride: 
+    spawnCoord: {x: 7, y: 6}
+    livingWallPartnerSpawnCoord: {x: 3, y: 5}
+    maxHealthOverride: 10
+    currentHealthOverride: 10
+    deckCardIds: []

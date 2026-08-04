@@ -1,4 +1,4 @@
-﻿# 《VibeGame》构筑物互动图鉴
+# 《VibeGame》构筑物互动图鉴
 
 > **文档状态**：Content 图鉴 v0.2  
 > **Layer**：Feature（Content 向）  
@@ -45,7 +45,7 @@
 | `temp_overlay` | 同格或邻格生成 **临时覆盖** N 回合 | 圣域、治疗雾气 |
 | `transform_ground` | 改变 **基础地面** | 毒沼、植物地 |
 | `spawn_prop` | 生成另一 **构筑物** | 落岩 → **`propId: wood_crate`** |
-| `spawn_unit` | 召唤战斗单位 | 骸骨堆 → 骷髅 |
+| `spawn_unit` | 召唤战斗单位 | 骸骨堆 → 骷髅兵 |
 | `area_damage` | 范围伤害 | 火药桶爆炸 |
 | `apply_status` | 对范围内单位施加状态 | 毒囊 → 中毒 |
 | `enemy_trigger` | 触发遭遇脚本/敌人 buff | 祭坛激活 |
@@ -59,7 +59,7 @@
 | --- | --- |
 | **邻接增益** | 指定 `enemyTag` 邻接该 prop 时获得 buff（如亡灵 + 骸骨堆） |
 | **意图素材** | 敌人技能 **放置** / **转化** 该 prop（如酋长落岩 → **`propId: wood_crate`**） |
-| **伪装** | prop 外观；交互后揭示敌人（**伪装箱** ↔ [`Feature-宝箱怪.md`](../敌人系统/Feature-宝箱怪.md)） |
+| **伪装** | prop 外观；交互后揭示敌人（**伪装箱** ↔ [`Feature-宝箱怪.md`](../敌人系统/敌人条目/未投入使用或未完成实现/Feature-宝箱怪.md)） |
 | **依赖存在** | 敌人能力仅当场上存在某 `propId` 时可用（如德鲁伊 **生命树** 领域） |
 
 ---
@@ -72,7 +72,7 @@
 | [`wood_crate`](#32-wood_crate--木箱)               | 木箱     | Ruin |       4 | **MVP** | 随机破旧武器掉落，可投掷                               | 拥有哥布林敌人的场景中可能出现                      |
 | [`life_tree_bough`](#33-life_tree_bough--生命树·枝桠) | 生命树·枝桠 | Barrier   |       — | Ch1+    | 掉落治愈球，恢复 **20%** 最大生命                      | 拥有活墙壁敌人的场景中可能出现                      |
 | [`iron_brazier`](#34-iron_brazier--火盆)           | 火盆     | Ruin |       6 | Ch1+    | 本格+邻格1 **着火场地** 2 回合（每回合开始 3 伤）            | 拥有地狱犬敌人的场景中可能出现                      |
-| [`bone_pile`](#35-bone_pile--骸骨堆)                | 骸骨堆    | Ruin |       1 | Ch1+    | 召唤骷髅                                       | 拥有寄生藤蔓敌人的场景中可能出现                     |
+| [`bone_pile`](#35-bone_pile--骸骨堆)                | 骸骨堆    | Ruin |       1 | Ch1+    | 召唤骷髅兵                                       | 拥有寄生藤蔓敌人的场景中可能出现                     |
 | [`treasure_chest`](#36-treasure_chest--宝箱)       | 宝箱     | Ruin | 6/12/18 | Ch1+    | 根据宝箱等级，在战斗结束后，给予20/50/100金币，或者普通/罕见/稀有卡牌奖励 | 所有战斗中都有可能出现，敌人越困难，                   |
 | [`mimic_chest`](#37-mimic_chest--伪装箱)            | 伪装箱    | Ruin |       4 | Ch1+    | 揭示宝箱怪                                      | 宝箱怪                                  |
 | [`Ruin_planks`](#38-Ruin_planks--拒马木栅) | 拒马木栅   | Ruin |       5 | Ch1+    | 无 / 木刺覆盖                                   | 拥有哥布林敌人的场景中可能出<br>被击退到该残骸上会额外受到20点伤害 |
@@ -112,7 +112,7 @@
 | `RuinHP` | **4** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | **MVP** |
-| `enemyHooks` | 哥布林遭遇；[`Feature-部落酋长.md`](../敌人系统/Feature-部落酋长.md) 落岩放置 **`propId: wood_crate`** |
+| `enemyHooks` | 哥布林遭遇；[`Feature-部落酋长.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-部落酋长.md) 落岩放置 **`propId: wood_crate`** |
 
 | 触发 | 效果 |
 | --- | --- |
@@ -128,7 +128,7 @@
 | `structureType` | **Barrier** |
 | `destroyBy` | `special_only` |
 | `mvpStatus` | Ch1+ |
-| `enemyHooks` | [`Feature-活墙壁.md`](../敌人系统/Feature-活墙壁.md) 场景可出现 |
+| `enemyHooks` | [`Feature-活墙壁.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-活墙壁.md) 场景可出现 |
 
 | 触发 | 效果 |
 | --- | --- |
@@ -144,7 +144,7 @@
 | `RuinHP` | **6** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
-| `enemyHooks` | [`Feature-地狱犬.md`](../敌人系统/Feature-地狱犬.md) 场景 |
+| `enemyHooks` | [`Feature-地狱犬.md`](../敌人系统/敌人条目/未投入使用或未完成实现/Feature-地狱犬.md) 场景 |
 
 | 触发 | 效果 |
 | --- | --- |
@@ -162,11 +162,11 @@
 | `RuinHP` | **1** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
-| `enemyHooks` | 寄生藤蔓场景；[`Feature-骷髅.md`](../敌人系统/Feature-骷髅.md) |
+| `enemyHooks` | 寄生藤蔓场景；[`Feature-骷髅兵.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-骷髅兵.md) |
 
 | 触发 | 效果 |
 | --- | --- |
-| `onRemove` | `spawn_unit`：**骷髅** ×1（同格或邻格空格） |
+| `onRemove` | `spawn_unit`：**骷髅兵** ×1（同格或邻格空格） |
 
 ---
 
@@ -199,7 +199,7 @@
 
 | 触发 | 效果 |
 | --- | --- |
-| `onRemove` | `enemy_trigger`：**reveal_mimic** → 同格 [`Feature-宝箱怪.md`](../敌人系统/Feature-宝箱怪.md) |
+| `onRemove` | `enemy_trigger`：**reveal_mimic** → 同格 [`Feature-宝箱怪.md`](../敌人系统/敌人条目/未投入使用或未完成实现/Feature-宝箱怪.md) |
 | `onHit` | 遭遇可配：首次受击 **50%** 提前 reveal |
 
 ---
@@ -259,7 +259,7 @@
 | `RuinHP` | **3** |
 | `destroyBy` | `normal_attack` |
 | `mvpStatus` | Ch1+ |
-| `enemyHooks` | [`Feature-寄生藤蔓.md`](../敌人系统/Feature-寄生藤蔓.md) **寄生残骸**（邻格互动） |
+| `enemyHooks` | [`Feature-寄生藤蔓.md`](../敌人系统/敌人条目/未投入使用或未完成实现/Feature-寄生藤蔓.md) **寄生残骸**（邻格互动） |
 
 | 触发 | 效果 |
 | --- | --- |

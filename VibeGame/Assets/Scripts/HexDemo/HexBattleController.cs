@@ -112,6 +112,7 @@ namespace HexDemo
                 "enemy_mimic_frenzy", "enemy_mimic_pounce", "enemy_mimic_reveal", "enemy_mimic_sticky",
                 "enemy_mimic_greed", "enemy_mind_flayer_steal", "enemy_mind_flayer_blast",
                 "enemy_mind_flayer_tentacles", "enemy_mind_flayer_obscure",
+                "enemy_orc_charge",
             };
             for (int i = 0; i < ids.Length; i++)
                 _enemySpecialHandlers[ids[i]] = ResolveRegisteredEnemySpecialCard;
@@ -212,6 +213,7 @@ namespace HexDemo
             }
 
             UpdateHoverFeedback();
+            UpdateOrcChargeIntentPreviews();
             if (!IsConsumableTargeting())
                 UpdateMovementHighlights();
             if (_busy || _draggedCard != null || _currentTurn != HexBattleFaction.Player)
@@ -358,6 +360,22 @@ namespace HexDemo
                 return pair != null
                     ? $"对向墙：{pair.State.displayName}"
                     : "无配对墙：改以玩家为目标";
+            }
+            if (definition.intentPattern == HexEnemyIntentPattern.LineCharge &&
+                slots.Any(slot => slot?.card?.definition?.id == "enemy_orc_charge"))
+            {
+                if (TryBuildOrcChargePreview(enemy, out _, out HexAxialCoord knockbackDestination))
+                {
+                    int damage = enemy.State.orcChargeEmpowered
+                        ? HexOrcWarriorRules.EmpoweredChargeDamage
+                        : HexOrcWarriorRules.BaseChargeDamage;
+                    int knockback = enemy.State.orcChargeEmpowered
+                        ? HexOrcWarriorRules.EmpoweredKnockback
+                        : HexOrcWarriorRules.BaseKnockback;
+                    return $"直线冲锋：{damage}伤，击退{knockback}至 {knockbackDestination}";
+                }
+
+                return "直线冲锋无合法命中：执行时改为逼近1格";
             }
 
             var target = GetPrimaryEnemyTarget(enemy);
@@ -1669,6 +1687,9 @@ namespace HexDemo
             if (enemy == null)
                 return null;
 
+            if (string.Equals(enemy.State?.enemyDefinitionId, HexEncounterGenerator.OrcWarriorId, System.StringComparison.Ordinal))
+                return DrawOrcIntentCard(enemy, slotKind, out emptiedDrawPile);
+
             System.Predicate<HexCardDefinition> predicate = slotKind switch
             {
                 HexEnemyIntentSlotKind.Move => IsEnemyMoveCard,
@@ -1692,6 +1713,46 @@ namespace HexDemo
                 var matched = enemy.Deck.DrawFirstMatchingToHand(predicate, out emptiedDrawPile);
                 if (matched != null)
                     return matched;
+            }
+
+            return enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
+        }
+
+        private HexCardInstance DrawOrcIntentCard(
+            HexBattleUnit enemy,
+            HexEnemyIntentSlotKind slotKind,
+            out bool emptiedDrawPile)
+        {
+            emptiedDrawPile = false;
+            HexCardInstance card;
+            if (slotKind == HexEnemyIntentSlotKind.Move)
+            {
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == "enemy_orc_approach", out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == "enemy_orc_stance", out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                return enemy.Deck.DrawFirstMatchingToHand(definition => definition?.cardType != HexCardType.Attack, out emptiedDrawPile)
+                       ?? enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
+            }
+
+            if (slotKind == HexEnemyIntentSlotKind.Attack)
+            {
+                var target = GetPrimaryEnemyTarget(enemy);
+                bool canCharge = target != null && HexOrcWarriorRules.TryBuildChargePath(
+                    enemy.State.coord,
+                    target.State.coord,
+                    coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                    out _,
+                    out _);
+                bool adjacent = target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1;
+                string preferredId = canCharge || !adjacent ? "enemy_orc_charge" : "enemy_orc_heavy_slash";
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == preferredId, out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                return enemy.Deck.DrawFirstMatchingToHand(definition => definition?.cardType == HexCardType.Attack, out emptiedDrawPile)
+                       ?? enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
             }
 
             return enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
@@ -1738,6 +1799,13 @@ namespace HexDemo
                     enemy.State.currentHealth = Mathf.Max(1, enemy.State.currentHealth - 4);
                     enemy.State.pendingStrengthNextTurn += 2;
                     enemy.RefreshLabel();
+                    return;
+                }
+                if (bottomId == "enemy_orc_bottom")
+                {
+                    enemy.State.orcChargeEmpowered = true;
+                    enemy.RefreshLabel();
+                    Debug.Log($"{enemy.State.displayName} triggered bottom card {definition.bottomCard.displayName}.");
                     return;
                 }
                 if (bottomId == "enemy_vine_bottom")
@@ -1955,6 +2023,9 @@ namespace HexDemo
                 case "enemy_chieftain_charge":
                     yield return ResolveEnemyChargeRoutine(enemy, target, 1, 6, true);
                     break;
+                case "enemy_orc_charge":
+                    yield return ResolveOrcChargeRoutine(enemy, target);
+                    break;
                 case "enemy_chieftain_quake":
                     yield return ResolveChieftainQuakeRoutine(enemy, card);
                     break;
@@ -2125,6 +2196,102 @@ namespace HexDemo
 
             if (stunOnBlocked && hitObstacle)
                 enemy.ApplyStun(1);
+        }
+
+        private IEnumerator ResolveOrcChargeRoutine(HexBattleUnit enemy, HexBattleUnit target)
+        {
+            if (enemy == null || target == null || !enemy.IsAlive || !target.IsAlive)
+                yield break;
+
+            bool validCharge = HexOrcWarriorRules.TryBuildChargePath(
+                enemy.State.coord,
+                target.State.coord,
+                coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                out _,
+                out List<HexAxialCoord> movementPath);
+            if (!validCharge)
+            {
+                yield return MoveTowardTargetRoutine(enemy, target, 1);
+                enemy.GetComponent<HexOrcChargePreviewView>()?.Clear();
+                yield break;
+            }
+
+            if (movementPath.Count > 1)
+                yield return MoveUnitRoutine(enemy, movementPath, 0, target.State.coord);
+
+            bool empowered = enemy.State.orcChargeEmpowered;
+            int damage = empowered
+                ? HexOrcWarriorRules.EmpoweredChargeDamage
+                : HexOrcWarriorRules.BaseChargeDamage;
+            int knockback = empowered
+                ? HexOrcWarriorRules.EmpoweredKnockback
+                : HexOrcWarriorRules.BaseKnockback;
+            enemy.State.orcChargeEmpowered = false;
+            yield return ResolveDirectAttackRoutine(enemy, target, damage, knockback: knockback);
+            enemy.GetComponent<HexOrcChargePreviewView>()?.Clear();
+        }
+
+        private void UpdateOrcChargeIntentPreviews()
+        {
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                HexBattleUnit enemy = _enemyUnits[i];
+                if (enemy == null || !enemy.IsAlive ||
+                    !string.Equals(enemy.State?.enemyDefinitionId, HexEncounterGenerator.OrcWarriorId, System.StringComparison.Ordinal))
+                    continue;
+
+                var view = enemy.GetComponent<HexOrcChargePreviewView>();
+                bool hasChargeIntent = _enemyIntentSlots.TryGetValue(enemy, out var slots) &&
+                                       slots != null &&
+                                       slots.Any(slot => slot?.card?.definition?.id == "enemy_orc_charge");
+                if (!hasChargeIntent || !TryBuildOrcChargePreview(enemy, out List<HexAxialCoord> previewCoords, out _))
+                {
+                    view?.Clear();
+                    continue;
+                }
+
+                view ??= enemy.gameObject.AddComponent<HexOrcChargePreviewView>();
+                view.SetPreview(grid, previewCoords, enemy.State.orcChargeEmpowered);
+            }
+        }
+
+        private bool TryBuildOrcChargePreview(
+            HexBattleUnit enemy,
+            out List<HexAxialCoord> previewCoords,
+            out HexAxialCoord knockbackDestination)
+        {
+            previewCoords = new List<HexAxialCoord>();
+            knockbackDestination = enemy?.State?.coord ?? default;
+            HexBattleUnit target = GetPrimaryEnemyTarget(enemy);
+            if (enemy == null || target == null || !target.IsAlive ||
+                !HexOrcWarriorRules.TryBuildChargePath(
+                    enemy.State.coord,
+                    target.State.coord,
+                    coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                    out _,
+                    out List<HexAxialCoord> movementPath))
+                return false;
+
+            previewCoords.AddRange(movementPath);
+            if (previewCoords.Count == 0 || !previewCoords[^1].Equals(target.State.coord))
+                previewCoords.Add(target.State.coord);
+
+            int knockback = enemy.State.orcChargeEmpowered
+                ? HexOrcWarriorRules.EmpoweredKnockback
+                : HexOrcWarriorRules.BaseKnockback;
+            ForcedMovementResult forcedMovement = ResolveForcedMovement(enemy, target, knockback, false);
+            if (forcedMovement != null)
+            {
+                knockbackDestination = forcedMovement.actualDestination;
+                if (!previewCoords[^1].Equals(knockbackDestination))
+                    previewCoords.Add(knockbackDestination);
+            }
+            else
+            {
+                knockbackDestination = target.State.coord;
+            }
+
+            return true;
         }
 
         private bool IsChargeObstacle(HexAxialCoord coord, HexBattleUnit movingUnit)

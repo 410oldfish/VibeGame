@@ -15,32 +15,97 @@ namespace HexDemo.PlayModeTests
         private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
         [Test]
-        public void EnemyDatabase_ContainsElevenIndependentDefinitions()
+        public void EnemyDatabase_ContainsTwelveIndependentDefinitions()
         {
             var database = Resources.Load("HexEnemyDatabase");
             Assert.That(database, Is.Not.Null);
 
             var enemies = GetField(database, "enemies") as IList;
             Assert.That(enemies, Is.Not.Null);
-            Assert.That(enemies.Count, Is.EqualTo(11));
+            Assert.That(enemies.Count, Is.EqualTo(12));
 
             var ids = enemies.Cast<object>().Select(enemy => (string)GetField(enemy, "id")).ToArray();
-            Assert.That(ids.Distinct().Count(), Is.EqualTo(11));
+            Assert.That(ids.Distinct().Count(), Is.EqualTo(12));
         }
 
         [UnityTest]
         public IEnumerator DefaultSandbox_InitializesGoblinAndSpearGoblin()
         {
-            SceneManager.LoadScene("BattleSandbox", LoadSceneMode.Single);
+            Scene scene = BuildScenario("Debug/BattleSandbox_Default");
             yield return null;
             yield return null;
 
-            var ids = GetEnemyStates(SceneManager.GetActiveScene())
+            var ids = GetEnemyStates(scene)
                 .Select(state => (string)GetField(state, "enemyDefinitionId"))
                 .OrderBy(id => id)
                 .ToArray();
 
             Assert.That(ids, Is.EqualTo(new[] { "goblin", "spear_goblin" }));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator OrcWarriorSandbox_InitializesMixedFormation()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_OrcWarrior");
+            yield return null;
+            yield return null;
+
+            var states = GetEnemyStates(scene);
+            var ids = states
+                .Select(state => (string)GetField(state, "enemyDefinitionId"))
+                .OrderBy(id => id)
+                .ToArray();
+            object orc = states.Single(state => (string)GetField(state, "enemyDefinitionId") == "orc_warrior");
+
+            Assert.That(ids, Is.EqualTo(new[] { "goblin", "orc_warrior", "skeleton" }));
+            Assert.That(GetField(orc, "maxHealth"), Is.EqualTo(22));
+            Assert.That(GetField(orc, "currentHealth"), Is.EqualTo(22));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator OrcWarriorCharge_ConsumesEmpowermentOnlyOnSuccessfulHit()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_OrcWarrior");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            Component orc = units.Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "orc_warrior");
+            Component blocker = units.Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "goblin");
+            object playerState = GetState(player);
+            object orcState = GetState(orc);
+            object blockerState = GetState(blocker);
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+
+            SetField(orcState, "coord", Activator.CreateInstance(coordType, 6, 5));
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(playerState, "armor", 0);
+            SetField(orcState, "orcChargeEmpowered", true);
+            int healthBefore = (int)GetField(playerState, "currentHealth");
+            yield return RunOrcCharge(controllerType, controller, orc, player);
+
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(healthBefore - 10));
+            Assert.That(GetCoord(GetField(playerState, "coord"), "q"), Is.EqualTo(2));
+            Assert.That(GetCoord(GetField(playerState, "coord"), "r"), Is.EqualTo(5));
+            Assert.That(GetField(orcState, "orcChargeEmpowered"), Is.False);
+
+            SetField(orcState, "coord", Activator.CreateInstance(coordType, 6, 5));
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(blockerState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            SetField(orcState, "orcChargeEmpowered", true);
+            healthBefore = (int)GetField(playerState, "currentHealth");
+            yield return RunOrcCharge(controllerType, controller, orc, player);
+
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(healthBefore));
+            Assert.That(GetField(orcState, "orcChargeEmpowered"), Is.True);
+            yield return SceneManager.UnloadSceneAsync(scene);
         }
 
         [UnityTest]
@@ -557,6 +622,15 @@ namespace HexDemo.PlayModeTests
             MethodInfo method = controllerType.GetMethod("ResolveEnemyChargeRoutine", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
             var routine = method.Invoke(controller, new object[] { enemy, player, 1, 6, true }) as IEnumerator;
+            Assert.That(routine, Is.Not.Null);
+            yield return controller.StartCoroutine(routine);
+        }
+
+        private static IEnumerator RunOrcCharge(Type controllerType, MonoBehaviour controller, Component enemy, Component player)
+        {
+            MethodInfo method = controllerType.GetMethod("ResolveOrcChargeRoutine", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var routine = method.Invoke(controller, new object[] { enemy, player }) as IEnumerator;
             Assert.That(routine, Is.Not.Null);
             yield return controller.StartCoroutine(routine);
         }

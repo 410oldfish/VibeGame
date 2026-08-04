@@ -13,7 +13,7 @@ namespace HexDemo.EditorTests
         public void BuiltInEnemyIds_AreUniqueAndResolvable()
         {
             var ids = HexCardLibrary.GetBuiltInEnemyIds();
-            Assert.That(ids, Has.Count.EqualTo(11));
+            Assert.That(ids.Count, Is.EqualTo(12));
             Assert.That(ids.Distinct().Count(), Is.EqualTo(ids.Count));
             foreach (string id in ids)
             {
@@ -39,22 +39,58 @@ namespace HexDemo.EditorTests
         {
             var database = Resources.Load<HexEnemyDatabaseSO>("HexEnemyDatabase");
             Assert.That(database, Is.Not.Null);
-            Assert.That(database.enemies, Has.Count.EqualTo(11));
-            Assert.That(database.enemies.Select(enemy => enemy.id).Distinct().Count(), Is.EqualTo(11));
+            Assert.That(database.enemies, Has.Count.EqualTo(12));
+            Assert.That(database.enemies.Select(enemy => enemy.id).Distinct().Count(), Is.EqualTo(12));
             Assert.That(database.enemies.All(enemy => enemy.ToDefinition().deckDefinitions.Count > 0), Is.True);
         }
 
-        [TestCase("goblin", 9, 2)]
-        [TestCase("spear_goblin", 11, 2)]
-        [TestCase("goblin_captain", 14, 3)]
-        [TestCase("tribal_chieftain", 13, 4)]
-        public void MvpEnemyDeckSnapshots_MatchDesign(string id, int deckCount, int slotCount)
+        [TestCase("goblin", 9, 2, false)]
+        [TestCase("spear_goblin", 11, 2, true)]
+        [TestCase("goblin_captain", 14, 3, true)]
+        [TestCase("tribal_chieftain", 13, 4, true)]
+        public void MvpEnemyDeckSnapshots_MatchDesign(string id, int deckCount, int slotCount, bool hasBottomCard)
         {
             var definition = HexCardLibrary.GetEnemyDefinition(id);
             Assert.That(definition, Is.Not.Null);
             Assert.That(definition.deckDefinitions, Has.Count.EqualTo(deckCount));
             Assert.That(definition.intentSlots, Has.Count.EqualTo(slotCount));
-            Assert.That(definition.bottomCard, Is.Not.Null);
+            Assert.That(definition.bottomCard != null, Is.EqualTo(hasBottomCard));
+        }
+
+        [Test]
+        public void TierOneEnemies_HaveNoBottomCards()
+        {
+            var goblin = HexCardLibrary.GetEnemyDefinition("goblin");
+            var skeleton = HexCardLibrary.GetEnemyDefinition("skeleton");
+
+            Assert.That(goblin.bottomCard, Is.Null);
+            Assert.That(goblin.emptyDrawPileStrengthGain, Is.Zero);
+            Assert.That(skeleton.displayName, Is.EqualTo("骷髅兵"));
+            Assert.That(skeleton.bottomCard, Is.Null);
+            Assert.That(skeleton.deckDefinitions, Has.Count.EqualTo(8));
+            Assert.That(skeleton.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Attack }));
+        }
+
+        [Test]
+        public void OrcWarriorDefinition_MatchesLineChargeDesign()
+        {
+            var definition = HexCardLibrary.GetEnemyDefinition("orc_warrior");
+            Assert.That(definition, Is.Not.Null);
+            Assert.That(definition.displayName, Is.EqualTo("兽人战士"));
+            Assert.That(definition.encounterType, Is.EqualTo(HexEnemyEncounterType.Normal));
+            Assert.That(definition.intentPattern, Is.EqualTo(HexEnemyIntentPattern.LineCharge));
+            Assert.That(definition.attackMaxRange, Is.EqualTo(3));
+            Assert.That(definition.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack }));
+            Assert.That(definition.deckDefinitions, Has.Count.EqualTo(10));
+            Assert.That(definition.bottomCard?.id, Is.EqualTo("enemy_orc_bottom"));
+
+            var counts = CountById(definition.deckDefinitions);
+            Assert.That(GetCount(counts, "enemy_orc_charge"), Is.EqualTo(4));
+            Assert.That(GetCount(counts, "enemy_orc_heavy_slash"), Is.EqualTo(3));
+            Assert.That(GetCount(counts, "enemy_orc_approach"), Is.EqualTo(2));
+            Assert.That(GetCount(counts, "enemy_orc_stance"), Is.EqualTo(1));
+            Assert.That(HexCardLibrary.GetCardById("enemy_orc_charge").amount, Is.EqualTo(8));
+            Assert.That(HexCardLibrary.GetCardById("enemy_orc_heavy_slash").amount, Is.EqualTo(7));
         }
 
         [Test]
@@ -85,8 +121,8 @@ namespace HexDemo.EditorTests
                 .Cast<HexSandboxEnemyType>()
                 .Select(value => value.ToDefinitionId())
                 .ToArray();
-            Assert.That(enumIds, Has.Length.EqualTo(11));
-            Assert.That(enumIds.Distinct().Count(), Is.EqualTo(11));
+            Assert.That(enumIds, Has.Length.EqualTo(12));
+            Assert.That(enumIds.Distinct().Count(), Is.EqualTo(12));
             Assert.That(enumIds.OrderBy(id => id), Is.EqualTo(HexCardLibrary.GetBuiltInEnemyIds().OrderBy(id => id)));
             Assert.That(enumIds, Does.Not.Contain("mind_tentacle"));
         }

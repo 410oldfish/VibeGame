@@ -10,27 +10,29 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cf63922b91d736046bcd101d46b08c66, type: 3}
-  m_Name: skeleton
+  m_Name: orc_warrior
   m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexEnemyDefinitionSO
-  id: skeleton
-  displayName: "\u9AB7\u9AC5\u5175"
+  id: orc_warrior
+  displayName: "\u517D\u4EBA\u6218\u58EB"
   encounterType: 0
-  intentPattern: 3
+  intentPattern: 5
   attackMinRange: 1
-  attackMaxRange: 1
+  attackMaxRange: 3
   emptyDrawPileStrengthGain: 0
   maxSummons: 0
   summonHealth: 0
   phaseTwoHealthRatio: 0
-  intentSlots: 01000000
+  intentSlots: 0000000001000000
   deckCardIds:
-  - enemy_skeleton_strike
-  - enemy_skeleton_strike
-  - enemy_skeleton_strike
-  - enemy_skeleton_strike
-  - enemy_skeleton_shamble
-  - enemy_skeleton_shamble
-  - enemy_skeleton_shamble
-  - enemy_skeleton_shield
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_heavy_slash
+  - enemy_orc_heavy_slash
+  - enemy_orc_heavy_slash
+  - enemy_orc_approach
+  - enemy_orc_approach
+  - enemy_orc_stance
   phaseTwoDeckCardIds: []
-  bottomCardId:
+  bottomCardId: enemy_orc_bottom

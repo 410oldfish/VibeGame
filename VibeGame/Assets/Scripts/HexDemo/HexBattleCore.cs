@@ -87,6 +87,7 @@ namespace HexDemo
         Ranged = 2,
         Stationary = 3,
         PairedLivingWall = 4,
+        LineCharge = 5,
     }
 
     public enum HexEnemyIntentSlotKind
@@ -730,6 +731,7 @@ namespace HexDemo
         public int cardsPlayedThisTurn;
         public bool rooted;
         public bool isPlant;
+        public bool orcChargeEmpowered;
         public HexAxialCoord coord;
         public HexLivingWallRuntimeState livingWall;
 
@@ -747,6 +749,8 @@ namespace HexDemo
         public int maxHealth = 30;
         public int currentHealth = 30;
         public int gold = 0;
+        public int completedCombatCount;
+        public string lastNormalEncounterSignature;
         public HexCardProfession profession = HexCardProfession.Warrior;
         public List<HexCardDefinition> deckDefinitions = new();
         public List<HexConsumableInstance> consumables = new();
@@ -758,6 +762,8 @@ namespace HexDemo
                 maxHealth = maxHealth,
                 currentHealth = currentHealth,
                 gold = gold,
+                completedCombatCount = completedCombatCount,
+                lastNormalEncounterSignature = lastNormalEncounterSignature,
                 profession = profession,
                 deckDefinitions = new List<HexCardDefinition>(deckDefinitions),
                 consumables = consumables.ConvertAll(item => new HexConsumableInstance
@@ -1103,6 +1109,12 @@ namespace HexDemo
         private static readonly HexCardDefinition SkeletonShield = Card("enemy_skeleton_shield", "骨盾", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 4, 0, 0, "Enemy", "获得4格挡。", new Color(0.42f, 0.5f, 0.58f, 1f));
         private static readonly HexCardDefinition SkeletonBottom = Card("enemy_skeleton_bottom", "散骨", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 4, 0, 0, "Enemy", "底牌：失去4生命，下回合获得2力量。", new Color(0.45f, 0.42f, 0.4f, 1f), false, new[] { "底牌" });
 
+        private static readonly HexCardDefinition OrcCharge = Card("enemy_orc_charge", "直线冲锋", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 8, 3, 0, "Enemy", "沿直线最多推进3格；命中造成8伤并击退1。", new Color(0.72f, 0.28f, 0.16f, 1f));
+        private static readonly HexCardDefinition OrcHeavySlash = Card("enemy_orc_heavy_slash", "重斩", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 7, 1, 0, "Enemy", "对邻格目标造成7伤。", new Color(0.66f, 0.24f, 0.18f, 1f));
+        private static readonly HexCardDefinition OrcApproach = Card("enemy_orc_approach", "逼近", HexCardType.Action, HexCardProfession.Monster, HexCardEffectType.Move, HexCardTargetType.EnemyUnit, 0, 1, 0, 0, "Enemy", "朝主目标移动1格。", new Color(0.52f, 0.48f, 0.22f, 1f));
+        private static readonly HexCardDefinition OrcStance = Card("enemy_orc_stance", "架势", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.Defend, HexCardTargetType.Self, 0, 6, 0, 0, "Enemy", "获得6点格挡。", new Color(0.5f, 0.38f, 0.24f, 1f));
+        private static readonly HexCardDefinition OrcBottom = Card("enemy_orc_bottom", "再度冲阵", HexCardType.Power, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.Self, 0, 1, 0, 0, "Enemy", "底牌：下一次成功直线冲锋伤害+2，击退改为2。", new Color(0.78f, 0.36f, 0.14f, 1f), false, new[] { "底牌" });
+
         private static readonly HexCardDefinition VineStrike = Card("enemy_vine_strike", "藤刺", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 5, 1, 0, "Enemy", "邻格5伤。", new Color(0.32f, 0.58f, 0.3f, 1f));
         private static readonly HexCardDefinition VineEntangle = Card("enemy_vine_entangle", "缠绕", HexCardType.Attack, HexCardProfession.Monster, HexCardEffectType.Attack, HexCardTargetType.EnemyUnit, 0, 3, 1, 0, "Enemy", "邻格3伤并施加束缚1。", new Color(0.28f, 0.52f, 0.26f, 1f));
         private static readonly HexCardDefinition VineSnare = Card("enemy_vine_snare", "缠足", HexCardType.Skill, HexCardProfession.Monster, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 0, 1, 2, 0, "Enemy", "射程2束缚1；已束缚则拉拽1。", new Color(0.36f, 0.56f, 0.3f, 1f));
@@ -1211,6 +1223,7 @@ namespace HexDemo
             CaptainBottom,
             ChieftainBottom,
             SkeletonStrike, SkeletonShamble, SkeletonShield, SkeletonBottom,
+            OrcCharge, OrcHeavySlash, OrcApproach, OrcStance, OrcBottom,
             VineStrike, VineEntangle, VineSnare, VineCrawl, VineRoot, VineSpread, VineSporeSac, VineBottom,
             WallStab, WallRootStab, WallCrush, WallGrow, WallThickHide, WallRegenerate,
             WallAdvance, WallSpike, WallReform, WallFortify, WallBottom,
@@ -1476,7 +1489,7 @@ namespace HexDemo
         public static IReadOnlyList<string> GetBuiltInEnemyIds() => new[]
         {
             "goblin", "spear_goblin", "goblin_captain", "tribal_chieftain", "skeleton",
-            "parasitic_vine", "living_wall", "gargoyle", "hellhound", "mimic", "mind_flayer",
+            "orc_warrior", "parasitic_vine", "living_wall", "gargoyle", "hellhound", "mimic", "mind_flayer",
         };
 
         private static HexEnemyDefinition CreateBuiltInEnemyDefinition(string id)
@@ -1484,7 +1497,7 @@ namespace HexDemo
             switch (id)
             {
                 case "goblin":
-                    return CreateEnemyDefinition(id, "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 5, GoblinBottom, CreateGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                    return CreateEnemyDefinition(id, "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 0, null, CreateGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "spear_goblin":
                     return CreateEnemyDefinition(id, "投矛哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Ranged, 2, 3, 1, SpearGoblinBottom, CreateSpearGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "goblin_captain":
@@ -1492,7 +1505,9 @@ namespace HexDemo
                 case "tribal_chieftain":
                     return CreateEnemyDefinition(id, "部落酋长", HexEnemyEncounterType.Boss, HexEnemyIntentPattern.ApproachStrike, 1, 1, 2, ChieftainBottom, CreateChieftainPhaseOneDeck(), 0, 0, 0.5f, CreateChieftainPhaseTwoDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free, HexEnemyIntentSlotKind.Free);
                 case "skeleton":
-                    return CreateEnemyDefinition(id, "骷髅", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, SkeletonBottom, Repeat((SkeletonStrike, 4), (SkeletonShamble, 3), (SkeletonShield, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                    return CreateEnemyDefinition(id, "骷髅兵", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, null, Repeat((SkeletonStrike, 4), (SkeletonShamble, 3), (SkeletonShield, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                case "orc_warrior":
+                    return CreateEnemyDefinition(id, "兽人战士", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.LineCharge, 1, 3, 0, OrcBottom, Repeat((OrcCharge, 4), (OrcHeavySlash, 3), (OrcApproach, 2), (OrcStance, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "parasitic_vine":
                     return CreateEnemyDefinition(id, "寄生藤蔓", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 0, VineBottom, Repeat((VineStrike, 3), (VineEntangle, 2), (VineSnare, 1), (VineCrawl, 2), (VineRoot, 2), (VineSpread, 1), (VineSporeSac, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "living_wall":

@@ -425,13 +425,13 @@ namespace HexDemo
             switch (targetNode.nodeType)
             {
                 case HexMapNodeType.SmallBattle:
-                    EnterBattleRoom(1, "Small Battle");
+                    EnterBattleRoom("Small Battle");
                     break;
                 case HexMapNodeType.EliteBattle:
-                    EnterBattleRoom(3, "Elite Battle");
+                    EnterBattleRoom("Elite Battle");
                     break;
                 case HexMapNodeType.Boss:
-                    EnterBattleRoom(5, "Boss Battle");
+                    EnterBattleRoom("Boss Battle");
                     break;
                 case HexMapNodeType.Shop:
                     ShowShop();
@@ -445,11 +445,19 @@ namespace HexDemo
             }
         }
 
-        private void EnterBattleRoom(int enemyCount, string title)
+        private void EnterBattleRoom(string title)
         {
             var roomRoot = new GameObject($"Room_{title.Replace(" ", "_")}");
             _roomRoots.Add(roomRoot);
             HexMapNodeType nodeType = GetBattleNodeType(title);
+            int encounterSeed = Random.Range(1, int.MaxValue);
+            HexEncounterPlan encounterPlan = HexEncounterGenerator.Generate(
+                nodeType,
+                _runState.completedCombatCount,
+                encounterSeed,
+                _runState.lastNormalEncounterSignature);
+            if (encounterPlan.kind == HexEncounterPlanKind.Normal)
+                _runState.lastNormalEncounterSignature = encounterPlan.Signature;
 
             var grid = roomRoot.AddComponent<HexGrid>();
             grid.width = 11;
@@ -459,10 +467,14 @@ namespace HexDemo
             grid.heightStep = 0f;
             grid.tilePrefab = LoadTerrainTilePrefab();
             grid.clickLayerMask = ~0;
+            grid.generateFeatureTerrain = encounterPlan.kind != HexEncounterPlanKind.EliteLivingWallPair;
             grid.Build();
             ConfigureBattleCamera(grid);
 
-            var playerCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, new HexAxialCoord(3, 5));
+            var desiredPlayerCoord = encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair
+                ? new HexAxialCoord(5, 5)
+                : new HexAxialCoord(3, 5);
+            var playerCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, desiredPlayerCoord);
             var playerRoot = new GameObject("PlayerUnit");
             playerRoot.transform.SetParent(roomRoot.transform, false);
             var playerAnimator = SpawnCharacterModel(playerRoot.transform, LoadStarter02Prefab());
@@ -496,41 +508,46 @@ namespace HexDemo
                 new HexAxialCoord(8, 4),
             };
 
-            for (int i = 0; i < enemyCount; i++)
+            if (encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair)
             {
-                var enemyRoot = new GameObject($"EnemyUnit_{i + 1}");
-                enemyRoot.transform.SetParent(roomRoot.transform, false);
-                var enemyAnimator = SpawnCharacterModel(enemyRoot.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab());
-                var enemyUnit = enemyRoot.AddComponent<HexBattleUnit>();
-                var enemyCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)], enemyUnits.Select(unit => unit.State.coord).Append(playerCoord));
-                string enemyDefinitionId = GetEncounterEnemyDefinitionId(i, nodeType);
-                var enemyDefinition = HexCardLibrary.GetEnemyDefinition(enemyDefinitionId);
-                if (enemyDefinition == null)
+                if (!TrySpawnAdventureLivingWallPair(roomRoot.transform, grid, playerCoord, enemyUnits))
+                    Debug.LogError("Unable to create a complete living wall pair for the elite encounter.");
+            }
+            else
+            {
+                for (int i = 0; i < encounterPlan.enemyDefinitionIds.Count; i++)
                 {
-                    Debug.LogError($"Unknown encounter enemyDefinitionId: {enemyDefinitionId}");
-                    Destroy(enemyRoot);
-                    continue;
+                    string enemyDefinitionId = encounterPlan.enemyDefinitionIds[i];
+                    var enemyDefinition = HexCardLibrary.GetEnemyDefinition(enemyDefinitionId);
+                    if (enemyDefinition == null)
+                    {
+                        Debug.LogError($"Unknown encounter enemyDefinitionId: {enemyDefinitionId}");
+                        continue;
+                    }
+
+                    var enemyCoord = HexBattleSetupUtility.FindClosestExistingCoord(
+                        grid,
+                        desiredEnemyCoords[Mathf.Min(i, desiredEnemyCoords.Length - 1)],
+                        enemyUnits.SelectMany(unit => unit.OccupiedCoords).Append(playerCoord));
+                    enemyUnits.Add(CreateAdventureEnemyUnit(
+                        roomRoot.transform,
+                        grid,
+                        enemyDefinition,
+                        $"enemy_{i + 1}",
+                        enemyDefinition.displayName,
+                        enemyCoord,
+                        GetEncounterEnemyHealth(enemyDefinition.id),
+                        null));
                 }
-                enemyUnit.Initialize(new HexBattleUnitState
-                {
-                    id = $"enemy_{i + 1}",
-                    displayName = enemyDefinition.displayName,
-                    enemyDefinitionId = enemyDefinition.id,
-                    faction = HexBattleFaction.Enemy,
-                    maxHealth = GetEncounterEnemyHealth(enemyDefinition.id),
-                    currentHealth = GetEncounterEnemyHealth(enemyDefinition.id),
-                    armor = 0,
-                    energy = 0,
-                    maxEnergy = 0,
-                    drawPerTurn = 0,
-                    maxMovePoints = 0,
-                    currentMovePoints = 0,
-                    attackRange = enemyDefinition.attackMaxRange,
-                    emptyDrawPileStrengthGain = enemyDefinition.emptyDrawPileStrengthGain,
-                    coord = enemyCoord,
-                }, enemyAnimator, enemyDefinition.deckDefinitions);
-                enemyUnit.SnapTo(grid, 0.03f);
-                enemyUnits.Add(enemyUnit);
+            }
+
+            if (enemyUnits.Count == 0)
+            {
+                Debug.LogError($"Encounter generation produced no enemies. kind={encounterPlan.kind}, seed={encounterPlan.seed}");
+                Destroy(roomRoot);
+                _roomRoots.Remove(roomRoot);
+                ShowMap();
+                return;
             }
 
             var controllerGO = new GameObject("BattleController");
@@ -538,6 +555,132 @@ namespace HexDemo
             var battleController = controllerGO.AddComponent<HexBattleController>();
             battleController.Initialize(grid, playerUnit, enemyUnits, _sceneCamera, _runState);
             battleController.BattleFinished += OnBattleFinished;
+        }
+
+        private HexBattleUnit CreateAdventureEnemyUnit(
+            Transform parent,
+            HexGrid grid,
+            HexEnemyDefinition enemyDefinition,
+            string id,
+            string displayName,
+            HexAxialCoord coord,
+            int health,
+            HexLivingWallRuntimeState livingWall)
+        {
+            var enemyRoot = new GameObject($"EnemyUnit_{id}");
+            enemyRoot.transform.SetParent(parent, false);
+            var enemyAnimator = livingWall == null
+                ? SpawnCharacterModel(enemyRoot.transform, LoadEnemyPrefab() ?? LoadStarter02Prefab())
+                : null;
+            var enemyUnit = enemyRoot.AddComponent<HexBattleUnit>();
+            enemyUnit.Initialize(new HexBattleUnitState
+            {
+                id = id,
+                displayName = displayName,
+                enemyDefinitionId = enemyDefinition.id,
+                faction = HexBattleFaction.Enemy,
+                maxHealth = Mathf.Max(1, health),
+                currentHealth = Mathf.Max(1, health),
+                armor = 0,
+                energy = 0,
+                maxEnergy = 0,
+                drawPerTurn = 0,
+                maxMovePoints = 0,
+                currentMovePoints = 0,
+                attackRange = enemyDefinition.attackMaxRange,
+                enemyAttackMinRange = enemyDefinition.attackMinRange,
+                enemyAttackMaxRange = enemyDefinition.attackMaxRange,
+                emptyDrawPileStrengthGain = enemyDefinition.emptyDrawPileStrengthGain,
+                coord = coord,
+                livingWall = livingWall,
+            }, enemyAnimator, enemyDefinition.deckDefinitions);
+            enemyUnit.SnapTo(grid, 0.03f);
+            if (livingWall != null)
+                enemyUnit.AttachLivingWallView(grid);
+            return enemyUnit;
+        }
+
+        private bool TrySpawnAdventureLivingWallPair(
+            Transform parent,
+            HexGrid grid,
+            HexAxialCoord playerCoord,
+            List<HexBattleUnit> enemyUnits)
+        {
+            var definition = HexCardLibrary.GetEnemyDefinition(HexEncounterGenerator.LivingWallId);
+            if (definition == null)
+                return false;
+
+            for (int direction = 0; direction < 3; direction++)
+            {
+                HexAxialCoord firstCore = StepInDirection(playerCoord, direction, 3);
+                HexAxialCoord secondCore = StepInDirection(playerCoord, direction + 3, 3);
+                var firstOffsets = HexLivingWallRules.CreateInitialOffsets(grid, firstCore, secondCore);
+                var secondOffsets = HexLivingWallRules.CreateInitialOffsets(grid, secondCore, firstCore);
+                var firstCoords = BuildLivingWallCoords(firstCore, firstOffsets).ToList();
+                var secondCoords = BuildLivingWallCoords(secondCore, secondOffsets).ToList();
+                if (!CanSpawnAdventureLivingWall(grid, playerCoord, firstCoords, enemyUnits) ||
+                    !CanSpawnAdventureLivingWall(grid, playerCoord, secondCoords, enemyUnits) ||
+                    firstCoords.Intersect(secondCoords).Any())
+                    continue;
+
+                const string firstId = "enemy_living_wall_a";
+                const string secondId = "enemy_living_wall_b";
+                enemyUnits.Add(CreateAdventureEnemyUnit(
+                    parent, grid, definition, firstId, $"{definition.displayName} A", firstCore, 34,
+                    new HexLivingWallRuntimeState
+                    {
+                        spawnOrder = 0,
+                        pairedWallId = secondId,
+                        footprintOffsets = firstOffsets,
+                    }));
+                enemyUnits.Add(CreateAdventureEnemyUnit(
+                    parent, grid, definition, secondId, $"{definition.displayName} B", secondCore, 34,
+                    new HexLivingWallRuntimeState
+                    {
+                        spawnOrder = 1,
+                        pairedWallId = firstId,
+                        footprintOffsets = secondOffsets,
+                    }));
+                return true;
+            }
+
+            return false;
+        }
+
+        private static HexAxialCoord StepInDirection(HexAxialCoord start, int direction, int distance)
+        {
+            HexAxialCoord result = start;
+            for (int i = 0; i < distance; i++)
+                result = HexAxialCoord.Neighbor(result, direction);
+            return result;
+        }
+
+        private static IEnumerable<HexAxialCoord> BuildLivingWallCoords(
+            HexAxialCoord core,
+            IReadOnlyList<HexAxialCoord> offsets)
+        {
+            for (int i = 0; i < offsets.Count; i++)
+                yield return HexLivingWallRules.ToWorldCoord(core, offsets[i]);
+        }
+
+        private static bool CanSpawnAdventureLivingWall(
+            HexGrid grid,
+            HexAxialCoord playerCoord,
+            IReadOnlyCollection<HexAxialCoord> coords,
+            IReadOnlyList<HexBattleUnit> existing)
+        {
+            var occupied = new HashSet<HexAxialCoord>(existing.SelectMany(unit => unit.OccupiedCoords));
+            foreach (HexAxialCoord coord in coords)
+            {
+                if (coord.Equals(playerCoord) || occupied.Contains(coord) ||
+                    !grid.TryGetTile(coord, out var tile) || tile == null ||
+                    tile.zone == HexTerrainZoneType.Pit ||
+                    tile.structureType != HexTerrainStructureType.None ||
+                    tile.pickupType != HexTerrainPickupType.None)
+                    return false;
+            }
+
+            return true;
         }
 
         private void OnBattleFinished(bool playerWon, int goldReward, HexBattleUnit playerUnit)
@@ -551,6 +694,7 @@ namespace HexDemo
                 return;
             }
 
+            _runState.completedCombatCount += 1;
             _runState.gold += goldReward;
             ShowBattleReward(goldReward);
         }
@@ -1599,21 +1743,6 @@ namespace HexDemo
             Object.DontDestroyOnLoad(eventSystemGO);
         }
 
-        private static string GetEncounterEnemyDefinitionId(int enemyIndex, HexMapNodeType nodeType)
-        {
-            if (nodeType == HexMapNodeType.Boss)
-                return "tribal_chieftain";
-            if (nodeType == HexMapNodeType.EliteBattle)
-                return enemyIndex == 0 ? "goblin_captain" : "spear_goblin";
-
-            return (enemyIndex % 3) switch
-            {
-                1 => "spear_goblin",
-                2 => "goblin_captain",
-                _ => "goblin",
-            };
-        }
-
         private static int GetEncounterEnemyHealth(string enemyDefinitionId)
         {
             return enemyDefinitionId switch
@@ -1621,6 +1750,9 @@ namespace HexDemo
                 "tribal_chieftain" => 60,
                 "goblin_captain" => 28,
                 "spear_goblin" => 14,
+                "living_wall" => 34,
+                "orc_warrior" => 22,
+                "skeleton" => 10,
                 _ => 12,
             };
         }

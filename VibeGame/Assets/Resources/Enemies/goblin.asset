@@ -18,7 +18,7 @@ MonoBehaviour:
   intentPattern: 1
   attackMinRange: 1
   attackMaxRange: 1
-  emptyDrawPileStrengthGain: 5
+  emptyDrawPileStrengthGain: 0
   maxSummons: 0
   summonHealth: 0
   phaseTwoHealthRatio: 0
@@ -34,4 +34,4 @@ MonoBehaviour:
   - enemy_goblin_roll
   - enemy_goblin_roll
   phaseTwoDeckCardIds: []
-  bottomCardId: enemy_goblin_bottom
+  bottomCardId:

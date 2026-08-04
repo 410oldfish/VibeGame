@@ -78,18 +78,18 @@ namespace HexDemo
             {
                 _occupiedCoords.Clear();
                 if (State == null)
-                    return _occupiedCoords;
+                    return new List<HexAxialCoord>(_occupiedCoords);
 
                 var offsets = State.livingWall?.footprintOffsets;
                 if (offsets == null || offsets.Count == 0)
                 {
                     _occupiedCoords.Add(State.coord);
-                    return _occupiedCoords;
+                    return new List<HexAxialCoord>(_occupiedCoords);
                 }
 
                 for (int i = 0; i < offsets.Count; i++)
                     _occupiedCoords.Add(new HexAxialCoord(State.coord.q + offsets[i].q, State.coord.r + offsets[i].r));
-                return _occupiedCoords;
+                return new List<HexAxialCoord>(_occupiedCoords);
             }
         }
 
