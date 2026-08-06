@@ -247,7 +247,7 @@ namespace HexDemo
                     continue;
                 }
 
-                yield return MoveUnitRoutine(target, movement.path, 0);
+                yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
                 if (target.IsAlive && !target.State.coord.Equals(movement.actualDestination))
                 {
                     blocked = true;
@@ -256,9 +256,17 @@ namespace HexDemo
             }
 
             if (blocked)
+            {
+                yield return ResolveDeathsAndBattleEndRoutine();
                 yield break;
+            }
 
-            yield return MoveUnitRoutine(wall, new List<HexAxialCoord> { wall.State.coord, destinationCore }, 0, directionTarget.State.coord);
+            yield return MoveUnitRoutine(
+                wall,
+                new List<HexAxialCoord> { wall.State.coord, destinationCore },
+                0,
+                HexMovementCause.Active,
+                directionTarget.State.coord);
         }
 
         private void ApplyLivingWallSqueeze(HexBattleUnit target, HexBattleUnit wall)
@@ -267,8 +275,6 @@ namespace HexDemo
                 return;
 
             ApplyDamageToUnit(target, HexLivingWallRules.SqueezeDamage, wall);
-            if (!target.IsAlive)
-                StartCoroutine(target.PlayDeathAndCleanup());
         }
 
         private bool IsLivingWallStaticDestinationLegal(
@@ -521,15 +527,19 @@ namespace HexDemo
 
             if (wall.State.livingWall.isOffspring)
             {
-                wall.State.currentHealth = 0;
+                ApplyDamageToUnit(
+                    wall,
+                    wall.State.currentHealth + wall.State.armor,
+                    _playerUnit,
+                    HexDamageTags.Environment);
                 wall.RefreshLabel();
-                StartCoroutine(wall.PlayDeathAndCleanup());
+                StartCoroutine(ResolveDeathsAndBattleEndRoutine());
                 return true;
             }
 
             ApplyDamageToUnit(wall, HexLivingWallRules.GetBreakDamage(wall.State.maxHealth), _playerUnit);
             if (!wall.IsAlive)
-                StartCoroutine(wall.PlayDeathAndCleanup());
+                StartCoroutine(ResolveDeathsAndBattleEndRoutine());
             wall.RefreshLabel();
             return true;
         }

@@ -1,5 +1,7 @@
 # 《VibeGame》MVP 第一章垂直切片
 
+> **实现基线说明（2026-08-04）**：第一层分层设计已同步到程序：1 级哥布林/骷髅兵无底牌，2 级兽人战士进入第四战后的正常池，3 级活墙壁进入精英池。详见 [`first-floor-enemy-tiers-and-encounter-pools-2026-08-04.md`](../../quick-specs/first-floor-enemy-tiers-and-encounter-pools-2026-08-04.md)。
+
 > **文档状态**：草案 v1.0  
 > **Layer**：Polish  
 > **Priority**：MVP  
@@ -117,7 +119,7 @@ flowchart TB
 | 章节主题 | [`../冒险系统/Feature-章节主题设计.md`](../冒险系统/Feature-章节主题设计.md) |
 | 商店/事件/休息 | [`../奖励成长系统/Feature-商店与服务设计.md`](../奖励成长系统/Feature-商店与服务设计.md)、[`../奖励成长系统/Feature-事件收益设计.md`](../奖励成长系统/Feature-事件收益设计.md)、[`../奖励成长系统/Feature-休息处成长设计.md`](../奖励成长系统/Feature-休息处成长设计.md) |
 | 遭遇 | [`../遭遇系统/Feature-遭遇与原型战斗设计.md`](../遭遇系统/Feature-遭遇与原型战斗设计.md) |
-| 敌人 | [`../敌人系统/Feature-哥布林.md`](../敌人系统/Feature-哥布林.md)、[`Feature-投矛哥布林.md`](../敌人系统/Feature-投矛哥布林.md)、[`Feature-哥布林队长.md`](../敌人系统/Feature-哥布林队长.md)、[`Feature-部落酋长.md`](../敌人系统/Feature-部落酋长.md) |
+| 敌人 | [`../敌人系统/Feature-哥布林.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-哥布林.md)、[`Feature-投矛哥布林.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-投矛哥布林.md)、[`Feature-哥布林队长.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-哥布林队长.md)、[`Feature-部落酋长.md`](../敌人系统/敌人条目/已投入使用并实现/Feature-部落酋长.md) |
 | 战士 | [`../职业系统/战士/Feature-战士.md`](../职业系统/战士/Feature-战士.md) |
 | 词条登记 | [`../设计规范/Feature-已投入设计词条登记.md`](../设计规范/Feature-已投入设计词条登记.md) |
 | 战士卡牌体系 | [`Feature-战士体系联动.md`](../职业系统/战士/Feature-战士体系联动.md) 及三体系文档（位移、武器系统 Post-MVP） |

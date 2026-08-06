@@ -18,6 +18,7 @@ namespace HexDemo
         [InspectorName("地狱犬")] Hellhound = 8,
         [InspectorName("宝箱怪")] Mimic = 9,
         [InspectorName("夺心魔")] MindFlayer = 10,
+        [InspectorName("兽人战士")] OrcWarrior = 11,
     }
 
     public static class HexSandboxEnemyTypeExtensions
@@ -35,6 +36,7 @@ namespace HexDemo
             HexSandboxEnemyType.Hellhound => "hellhound",
             HexSandboxEnemyType.Mimic => "mimic",
             HexSandboxEnemyType.MindFlayer => "mind_flayer",
+            HexSandboxEnemyType.OrcWarrior => "orc_warrior",
             _ => throw new ArgumentOutOfRangeException(nameof(enemyType), enemyType, null),
         };
 
@@ -57,6 +59,7 @@ namespace HexDemo
                 case "hellhound": enemyType = HexSandboxEnemyType.Hellhound; return true;
                 case "mimic": enemyType = HexSandboxEnemyType.Mimic; return true;
                 case "mind_flayer": enemyType = HexSandboxEnemyType.MindFlayer; return true;
+                case "orc_warrior": enemyType = HexSandboxEnemyType.OrcWarrior; return true;
                 default: return false;
             }
         }

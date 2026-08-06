@@ -528,8 +528,8 @@ namespace HexDemo
             var body = CreateTMP(parent, "Body", new Vector2(16f, -112f), new Vector2(Mathf.Max(150f, width - 32f), 92f), 20, FontStyles.Normal);
             body.text = string.IsNullOrWhiteSpace(card.definition.description)
                 ? card.definition.effectType == HexCardEffectType.Attack
-                    ? $"Deal {card.definition.amount} damage"
-                    : $"Gain {card.definition.amount} armor"
+                    ? $"Deal {card.EffectiveAmount} damage"
+                    : $"Gain {card.EffectiveAmount} armor"
                 : card.definition.description;
 
             if (card.definition.targetType != HexCardTargetType.Self && card.definition.range > 0)

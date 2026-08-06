@@ -4,9 +4,9 @@
 > **Layer**：Feature  
 > **Priority**：MVP  
 > 所属系统：敌人系统  
-> 关联主文档：[`Feature-敌人牌组与意图机制.md`](Feature-敌人牌组与意图机制.md)  
-> 关联规范：[`../设计规范/Foundation-卡牌与角色五维设计.md`](../设计规范/Foundation-卡牌与角色五维设计.md)  
-> MVP 锚点：[`../平衡验证/Polish-MVP第一章垂直切片.md`](../平衡验证/Polish-MVP第一章垂直切片.md)
+> 关联主文档：[`Feature-敌人牌组与意图机制.md`](../../Feature-敌人牌组与意图机制.md)  
+> 关联规范：[`../设计规范/Foundation-卡牌与角色五维设计.md`](../../../设计规范/Foundation-卡牌与角色五维设计.md)  
+> MVP 锚点：[`../平衡验证/Polish-MVP第一章垂直切片.md`](../../../平衡验证/Polish-MVP第一章垂直切片.md)
 
 ## 1. 敌人定位
 

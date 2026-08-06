@@ -21,10 +21,11 @@
 
 ### 1.3 执行顺序提示
 
-由 Controller 根据 `HexEnemyIntentPattern` 与距离计算，UI 只展示：
+由 Controller 根据实际执行顺序计算，UI 只展示：
 
-- **先攻后移** / **先移后攻**（ApproachStrike、Ranged 共用文案模板）
-- 示例：「若保持当前距离：先攻后移」
+- 固定槽序显示 **固定顺序：先攻后移** / **固定顺序：先移后攻**。
+- 距离重排模式显示 **若保持当前距离：先攻后移** / **若保持当前距离：先移后攻**。
+- 兽人战士显示 **先移后攻**，并追加直线冲锋伤害、路径、目标与击退落点预览。
 
 ### 1.4 刷新规则
 
@@ -40,7 +41,8 @@
 
 | 设计 ID | 代码字段 | 中文 | 类型 |
 |---------|----------|------|------|
-| 力量 | `strength` | 力量 | 增益 |
+| 力量 | `strength - temporaryStrengthUntilEndOfTurn - temporaryStrengthUntilEndOfBattle` | 力量（永久部分） | 增益 |
+| 临时力量 | `temporaryStrengthUntilEndOfTurn`、`temporaryStrengthUntilEndOfBattle` | 临时力量（总量） | 增益 |
 | 格挡 | `block` | 格挡 | 增益 |
 | 稳固 | `toughness` | 稳固 | 增益 |
 | 吸血 | `vampirism` | 吸血 | 增益 |
@@ -51,6 +53,8 @@
 | 眩晕 | `stun` | 眩晕 | 减益（敌人） |
 
 > **恐惧**：为敌方抽牌堆 token，非单位状态 debuff，不在 StatusIconBar 显示。
+>
+> 顶部力量数值继续显示攻击实际使用的总力量。状态栏中的“力量”只显示永久部分；“临时力量”显示两类临时值之和，Tooltip 分别列出“回合末移除”与“战斗末移除”的数值。
 
 ### 2.1 Tooltip 模板
 

@@ -30,7 +30,7 @@ MonoBehaviour:
       zone: 0
       baseTerrain: 0
       structureType: 1
-      propId: ''
+      propId:
       structureHp: 0
       pickupType: 0
       pickupAmount: 0
@@ -38,7 +38,7 @@ MonoBehaviour:
       zone: 0
       baseTerrain: 0
       structureType: 2
-      propId: ''
+      propId:
       structureHp: 3
       pickupType: 0
       pickupAmount: 0
@@ -55,25 +55,25 @@ MonoBehaviour:
     deckCardIds:
     - warrior_strike
     - warrior_strike
+    - warrior_windstep_ready
     - warrior_strike
-    - warrior_strike
-    - warrior_defend
+    - warrior_charge
     - warrior_defend
     - warrior_defend
     - warrior_defend
     - warrior_move_forward
   enemies:
   - enemyType: 0
-    legacyEnemyDefinitionId: ''
-    displayNameOverride: 
+    legacyEnemyDefinitionId:
+    displayNameOverride:
     spawnCoord: {x: 7, y: 5}
     livingWallPartnerSpawnCoord: {x: 3, y: 5}
     maxHealthOverride: -1
     currentHealthOverride: -1
     deckCardIds: []
   - enemyType: 1
-    legacyEnemyDefinitionId: ''
-    displayNameOverride: 
+    legacyEnemyDefinitionId:
+    displayNameOverride:
     spawnCoord: {x: 7, y: 4}
     livingWallPartnerSpawnCoord: {x: 3, y: 5}
     maxHealthOverride: -1

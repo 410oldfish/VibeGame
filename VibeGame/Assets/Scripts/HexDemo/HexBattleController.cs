@@ -48,6 +48,7 @@ namespace HexDemo
         private bool _pendingEndTurnRequest;
         private LineRenderer _targetArrow;
         private bool _battleFinished;
+        private bool? _lastBattlePlayerWon;
         private bool _updateRegistered;
         private readonly List<HexCardPlayLogEntry> _playLog = new();
         private readonly Dictionary<HexBattleUnit, List<HexEnemyIntentSlot>> _enemyIntentSlots = new();
@@ -62,6 +63,8 @@ namespace HexDemo
         {
             grid = battleGrid;
             rayCamera = battleCamera != null ? battleCamera : Camera.main;
+            _battleFinished = false;
+            _lastBattlePlayerWon = null;
 
             _playerUnit = playerUnit;
             InitializeConsumables(runState);
@@ -112,6 +115,7 @@ namespace HexDemo
                 "enemy_mimic_frenzy", "enemy_mimic_pounce", "enemy_mimic_reveal", "enemy_mimic_sticky",
                 "enemy_mimic_greed", "enemy_mind_flayer_steal", "enemy_mind_flayer_blast",
                 "enemy_mind_flayer_tentacles", "enemy_mind_flayer_obscure",
+                "enemy_orc_charge",
             };
             for (int i = 0; i < ids.Length; i++)
                 _enemySpecialHandlers[ids[i]] = ResolveRegisteredEnemySpecialCard;
@@ -212,6 +216,7 @@ namespace HexDemo
             }
 
             UpdateHoverFeedback();
+            UpdateOrcChargeIntentPreviews();
             if (!IsConsumableTargeting())
                 UpdateMovementHighlights();
             if (_busy || _draggedCard != null || _currentTurn != HexBattleFaction.Player)
@@ -360,13 +365,60 @@ namespace HexDemo
                     : "无配对墙：改以玩家为目标";
             }
 
-            var target = GetPrimaryEnemyTarget(enemy);
-            bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
-            bool attackFirst = targetInRange;
-            if (definition.intentPattern == HexEnemyIntentPattern.Ranged && !targetInRange)
-                attackFirst = false;
+            var orderedSlots = GetEnemyIntentExecutionOrder(enemy);
+            string orderHint = BuildMoveAttackOrderHint(
+                orderedSlots,
+                definition.intentPattern != HexEnemyIntentPattern.ApproachStrike &&
+                definition.intentPattern != HexEnemyIntentPattern.Ranged);
+            if (definition.intentPattern == HexEnemyIntentPattern.LineCharge &&
+                slots.Any(slot => slot?.card?.definition?.id == "enemy_orc_charge"))
+            {
+                if (TryBuildOrcChargePreview(enemy, out _, out HexAxialCoord knockbackDestination))
+                {
+                    int damage = enemy.State.orcChargeEmpowered
+                        ? HexOrcWarriorRules.EmpoweredChargeDamage
+                        : HexOrcWarriorRules.BaseChargeDamage;
+                    int knockback = enemy.State.orcChargeEmpowered
+                        ? HexOrcWarriorRules.EmpoweredKnockback
+                        : HexOrcWarriorRules.BaseKnockback;
+                    return JoinIntentHints(
+                        orderHint,
+                        $"直线冲锋：{damage}伤，击退{knockback}至 {knockbackDestination}");
+                }
 
-            return attackFirst ? "若保持当前距离：先攻后移" : "若保持当前距离：先移后攻";
+                return JoinIntentHints(orderHint, "直线冲锋无合法命中：执行时改为逼近1格");
+            }
+
+            return orderHint;
+        }
+
+        private static string BuildMoveAttackOrderHint(
+            IReadOnlyList<HexEnemyIntentSlot> orderedSlots,
+            bool fixedOrder)
+        {
+            if (orderedSlots == null)
+                return string.Empty;
+
+            int attackIndex = -1;
+            int moveIndex = -1;
+            for (int i = 0; i < orderedSlots.Count; i++)
+            {
+                if (orderedSlots[i]?.slotKind == HexEnemyIntentSlotKind.Attack && attackIndex < 0)
+                    attackIndex = i;
+                else if (orderedSlots[i]?.slotKind == HexEnemyIntentSlotKind.Move && moveIndex < 0)
+                    moveIndex = i;
+            }
+
+            if (attackIndex < 0 || moveIndex < 0)
+                return string.Empty;
+
+            string sequence = attackIndex < moveIndex ? "先攻后移" : "先移后攻";
+            return fixedOrder ? $"固定顺序：{sequence}" : $"若保持当前距离：{sequence}";
+        }
+
+        private static string JoinIntentHints(string orderHint, string detail)
+        {
+            return string.IsNullOrWhiteSpace(orderHint) ? detail : $"{orderHint}；{detail}";
         }
 
         public string GetStatusSummary()
@@ -512,7 +564,7 @@ namespace HexDemo
             if (!SubmitAuthoritativeCommand(HexNetworkCommandType.MoveUnit, ToPayload(tile.coord)))
                 return;
 
-            StartCoroutine(MoveUnitRoutine(_playerUnit, path, moveCost));
+            StartCoroutine(MoveUnitRoutine(_playerUnit, path, moveCost, HexMovementCause.Active));
         }
 
         private bool TryHandleEnemyHandClick()
@@ -715,22 +767,16 @@ namespace HexDemo
             _ui?.ShowPlayedCard(source, card);
             if (source.State.bleed > 0)
             {
-                ApplyDamageWithFeedback(source, source.State.bleed, source);
+                ApplyDamageWithFeedback(
+                    source,
+                    source.State.bleed,
+                    source,
+                    HexDamageTags.Status | HexDamageTags.SelfDamage);
                 source.RefreshLabel();
                 _ui.Refresh();
                 if (!source.IsAlive)
                 {
-                    if (source == _playerUnit)
-                    {
-                        yield return source.PlayDeathAndCleanup();
-                        yield return HandleBattleEnd(false);
-                    }
-                    else
-                    {
-                        yield return source.PlayDeathAndCleanup();
-                        if (_enemyUnits.All(enemy => enemy == null || !enemy.IsAlive))
-                            yield return HandleBattleEnd(true);
-                    }
+                    yield return ResolveDeathsAndBattleEndRoutine();
                     yield break;
                 }
             }
@@ -768,6 +814,8 @@ namespace HexDemo
             if (handledByCustomLogic)
             {
                 EndAttackPassiveContext();
+                if (_battleFinished)
+                    yield break;
                 if (exhaustCard)
                     NotifyWarriorExhaust(source);
                 yield return ApplyWarriorFirstAttackCardEffects(source, target, card);
@@ -838,41 +886,42 @@ namespace HexDemo
                             target.State.negateNextEnemyAttack = false;
                             continue;
                         }
-                        int attackDamage = GetModifiedDamage(source, target, card.definition.amount + Mathf.Max(0, source.State.strength));
-                        ApplyDamageWithFeedback(target, attackDamage, source);
-                        source.State.damageDealtThisTurn += attackDamage;
+                        ApplyAttackDamage(
+                            source,
+                            target,
+                            card.EffectiveAmount + Mathf.Max(0, source.State.strength));
                         if (target.IsAlive)
                         {
                             target.PlayHitAnimation();
                             yield return new WaitForSeconds(Mathf.Max(0.08f, target.GetHitDuration() * 0.85f));
-                            if (target.State.thorns > 0 && source.IsAlive)
-                                ApplyDamageWithFeedback(source, target.State.thorns, target);
                             yield return ApplyWeaponAttackEffectsRoutine(source, target);
-                            yield return ApplyKeywordEffectsRoutine(source, target, card);
+                            if (target.IsAlive && source.IsAlive)
+                                yield return ApplyKeywordEffectsRoutine(source, target, card);
+                            if (target.IsAlive && target.State.thorns > 0 && source.IsAlive)
+                                ApplyDamageToUnit(source, target.State.thorns, target, HexDamageTags.Reaction);
                         }
-                        else
-                        {
-                            yield return target.PlayDeathAndCleanup();
-                        }
+                        yield return ResolveDeathsAndBattleEndRoutine();
+                        if (_battleFinished)
+                            yield break;
                     }
                     break;
                 case HexCardEffectType.Defend:
                     if (CanConvertArmorCardToPlantHealing(source, target, card.definition))
-                        target.Heal(card.definition.amount);
+                        target.Heal(card.EffectiveAmount);
                     else
-                        GainArmorWithFeedback(source, card.definition.amount);
+                        GainArmorWithFeedback(source, card.EffectiveAmount);
                     break;
                 case HexCardEffectType.Move:
-                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.definition.amount));
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.EffectiveAmount));
                     break;
                 case HexCardEffectType.MoveAway:
-                    yield return ResolveRetreatRoutine(source, target, Mathf.Max(1, card.definition.amount));
+                    yield return ResolveRetreatRoutine(source, target, Mathf.Max(1, card.EffectiveAmount));
                     break;
                 case HexCardEffectType.DestroyBarrier:
                     DestroyBarrierAt(targetedCoord);
                     break;
                 case HexCardEffectType.PlaceRuin:
-                    PlaceRuinNear(source, Mathf.Max(1, card.definition.castRange), Mathf.Max(1, card.definition.amount));
+                    PlaceRuinNear(source, Mathf.Max(1, card.definition.castRange), Mathf.Max(1, card.EffectiveAmount));
                     break;
             }
 
@@ -953,6 +1002,10 @@ namespace HexDemo
                 yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
 
                 float longestImpactDuration = 0.08f;
+                int totalHealthLost = 0;
+                int totalThornsDamage = 0;
+                HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+                int baseDamage = card.EffectiveAmount + Mathf.Max(0, source.State.strength);
                 for (int i = 0; i < targets.Count; i++)
                 {
                     var areaTarget = targets[i];
@@ -960,47 +1013,46 @@ namespace HexDemo
                         continue;
 
                     areaTarget.FaceTarget(source.transform.position);
-                    int attackDamage = GetModifiedDamage(source, areaTarget, card.definition.amount + Mathf.Max(0, source.State.strength));
-                    ApplyAttackDamage(source, areaTarget, attackDamage);
-                    source.State.damageDealtThisTurn += attackDamage;
+                    HexDamageResult damageResult = ApplyAttackDamage(source, areaTarget, baseDamage, snapshot);
+                    totalHealthLost += damageResult.healthLost;
                     bool survivedHit = areaTarget.IsAlive;
                     if (survivedHit)
                     {
                         areaTarget.PlayHitAnimation();
                         longestImpactDuration = Mathf.Max(longestImpactDuration, areaTarget.GetHitDuration() * 0.85f);
-                        if (areaTarget.State.thorns > 0 && source.IsAlive)
-                            ApplyDamageToUnit(source, areaTarget.State.thorns, areaTarget);
+                        totalThornsDamage += Mathf.Max(0, areaTarget.State.thorns);
                     }
                     else
                     {
                         longestImpactDuration = Mathf.Max(longestImpactDuration, areaTarget.GetDeathDuration());
                     }
 
-                    if (source.State.firstAttackBonusPending && source.State.firstAttackBurnAmount > 0)
+                    if (areaTarget.IsAlive && source.State.firstAttackBonusPending && source.State.firstAttackBurnAmount > 0)
                     {
                         areaTarget.ApplyBurn(source.State.firstAttackBurnAmount);
                         source.State.firstAttackBonusPending = false;
                     }
 
-                    yield return ApplyWeaponAttackEffectsRoutine(source, areaTarget);
-                    yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
+                    if (areaTarget.IsAlive)
+                    {
+                        yield return ApplyWeaponAttackEffectsRoutine(source, areaTarget);
+                        yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
+                    }
                 }
+
+                CompleteAttackDamageBatch(source, totalHealthLost);
+                if (totalThornsDamage > 0 && source.IsAlive)
+                    ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
 
                 DamageRuinsInCoords(
                     GetDirectionalAreaCoords(source.State.coord, aimedCoord, card.definition.castRange, card.definition.effectRadius),
-                    card.definition.amount + Mathf.Max(0, source.State.strength),
+                    HexDamageResolver.PreviewModifiedDamage(snapshot, null, baseDamage),
                     targets);
 
                 yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
-
-                for (int i = 0; i < targets.Count; i++)
-                {
-                    var areaTarget = targets[i];
-                    if (areaTarget == null || areaTarget.IsAlive)
-                        continue;
-
-                    yield return areaTarget.PlayDeathAndCleanup();
-                }
+                yield return ResolveDeathsAndBattleEndRoutine();
+                if (_battleFinished || !source.IsAlive)
+                    yield break;
             }
         }
 
@@ -1016,6 +1068,10 @@ namespace HexDemo
             yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
 
             float longestImpactDuration = 0.08f;
+            int totalHealthLost = 0;
+            int totalThornsDamage = 0;
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int baseDamage = card.EffectiveAmount + Mathf.Max(0, source.State.strength);
             for (int i = 0; i < targets.Count; i++)
             {
                 var areaTarget = targets[i];
@@ -1025,32 +1081,34 @@ namespace HexDemo
                     continue;
 
                 areaTarget.FaceTarget(source.transform.position);
-                int attackDamage = GetModifiedDamage(source, areaTarget, card.definition.amount + Mathf.Max(0, source.State.strength));
-                ApplyAttackDamage(source, areaTarget, attackDamage);
-                source.State.damageDealtThisTurn += attackDamage;
+                HexDamageResult damageResult = ApplyAttackDamage(source, areaTarget, baseDamage, snapshot);
+                totalHealthLost += damageResult.healthLost;
                 if (areaTarget.IsAlive)
                 {
                     areaTarget.PlayHitAnimation();
                     longestImpactDuration = Mathf.Max(longestImpactDuration, areaTarget.GetHitDuration() * 0.85f);
-                    if (areaTarget.State.thorns > 0 && source.IsAlive)
-                        ApplyDamageToUnit(source, areaTarget.State.thorns, areaTarget);
+                    totalThornsDamage += Mathf.Max(0, areaTarget.State.thorns);
                 }
                 else
                 {
                     longestImpactDuration = Mathf.Max(longestImpactDuration, areaTarget.GetDeathDuration());
                 }
 
-                yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
+                if (areaTarget.IsAlive)
+                    yield return ApplyKeywordEffectsRoutine(source, areaTarget, card);
             }
 
-            DamageRuinsInCoords(affectedCoords, card.definition.amount + Mathf.Max(0, source.State.strength), targets);
+            CompleteAttackDamageBatch(source, totalHealthLost);
+            if (totalThornsDamage > 0 && source.IsAlive)
+                ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
+
+            DamageRuinsInCoords(
+                affectedCoords,
+                HexDamageResolver.PreviewModifiedDamage(snapshot, null, baseDamage),
+                targets);
 
             yield return new WaitForSeconds(Mathf.Max(0.08f, longestImpactDuration));
-            for (int i = 0; i < targets.Count; i++)
-            {
-                if (targets[i] != null && !targets[i].IsAlive)
-                    yield return targets[i].PlayDeathAndCleanup();
-            }
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
 
         private IEnumerator ResolveRuinTargetAttackRoutine(HexBattleUnit source, HexAxialCoord coord, HexCardInstance card)
@@ -1072,7 +1130,11 @@ namespace HexDemo
             source.PlayAttackAnimation();
             yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
 
-            int damage = GetModifiedDamage(source, null, card.definition.amount + Mathf.Max(0, source.State.strength));
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int damage = HexDamageResolver.PreviewModifiedDamage(
+                snapshot,
+                null,
+                card.EffectiveAmount + Mathf.Max(0, source.State.strength));
             int hpBefore = TileStructureHp(tile);
             string attackedPropId = tile.propId;
             bool applied = tile.DamageStructure(damage, out bool destroyed);
@@ -1084,7 +1146,6 @@ namespace HexDemo
                 Debug.LogWarning($"[RuinAttack] DamageStructure returned false at ({coord.q},{coord.r})");
 
             tile.FlashClick();
-            source.State.damageDealtThisTurn += Mathf.Max(0, damage);
             if (destroyed)
                 Debug.Log($"[RuinAttack] Ruin at {coord.q},{coord.r} destroyed by direct attack.");
             if (applied && attackedPropId == "consumable_iron_ball")
@@ -1121,6 +1182,9 @@ namespace HexDemo
             var keywordEffects = HexCardLibrary.GetKeywordEffects(card.definition);
             for (int i = 0; i < keywordEffects.Count; i++)
             {
+                if (target == null || !target.IsAlive)
+                    yield break;
+
                 var keyword = keywordEffects[i];
                 switch (keyword.keywordType)
                 {
@@ -1246,18 +1310,28 @@ namespace HexDemo
                 yield break;
 
             var line = HexBattlePathing.GetLineCoords(grid, source.State.coord, primaryTarget.State.coord, 4);
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int totalHealthLost = 0;
+            int totalThornsDamage = 0;
             for (int i = 0; i < line.Count; i++)
             {
                 var unit = FindUnitAtCoord(line[i], source);
                 if (unit == null || unit.State.faction == source.State.faction || !unit.IsAlive)
                     continue;
 
-                ApplyDamageWithFeedback(unit, GetModifiedDamage(source, unit, 3), source);
+                HexDamageResult result = ApplyAttackDamage(source, unit, 3, snapshot);
+                totalHealthLost += result.healthLost;
                 if (unit.IsAlive)
+                {
                     unit.PlayHitAnimation();
-                else
-                    yield return unit.PlayDeathAndCleanup();
+                    totalThornsDamage += Mathf.Max(0, unit.State.thorns);
+                }
             }
+
+            CompleteAttackDamageBatch(source, totalHealthLost);
+            if (totalThornsDamage > 0 && source.IsAlive)
+                ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
 
         private IEnumerator ApplyKnockbackRoutine(HexBattleUnit source, HexBattleUnit target, int distance)
@@ -1270,7 +1344,9 @@ namespace HexDemo
                 yield break;
 
             target.FaceTarget(grid.AxialToWorld(movement.actualDestination));
-            yield return target.MoveAlongPath(grid, movement.path, unitYOffset, moveSpeed * 1.2f, 0.01f, coord => OnUnitEnteredTile(target, coord));
+            yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
+            if (!target.IsAlive)
+                yield break;
             ApplyForcedMovementCollisionEffects(source, target, movement);
             target.RefreshLabel();
             _ui.Refresh();
@@ -1286,7 +1362,9 @@ namespace HexDemo
                 yield break;
 
             target.FaceTarget(grid.AxialToWorld(movement.actualDestination));
-            yield return target.MoveAlongPath(grid, movement.path, unitYOffset, moveSpeed * 1.2f, 0.01f, coord => OnUnitEnteredTile(target, coord));
+            yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
+            if (!target.IsAlive)
+                yield break;
             ApplyForcedMovementCollisionEffects(source, target, movement);
             target.RefreshLabel();
             _ui.Refresh();
@@ -1296,6 +1374,7 @@ namespace HexDemo
             HexBattleUnit unit,
             List<HexAxialCoord> path,
             int moveCost,
+            HexMovementCause cause,
             HexAxialCoord? towardTargetCoord = null)
         {
             if (IsLivingWallMovementPathBlocked(path, unit))
@@ -1342,7 +1421,12 @@ namespace HexDemo
             }
 
             unit.SpendMovePoints(moveCost);
-            HandlePostMovementPassives(unit, path, towardTargetCoord, movedDistance);
+            HandlePostMovement(unit, path, cause, towardTargetCoord, movedDistance);
+            if (!unit.IsAlive)
+            {
+                yield return ResolveDeathsAndBattleEndRoutine();
+                yield break;
+            }
             _busy = false;
             UpdateMovementHighlights();
             _ui.Refresh();
@@ -1375,10 +1459,14 @@ namespace HexDemo
                 ExpireTemporaryObstacles();
                 PrepareEnemyIntents();
                 _playerUnit.BeginTurn();
-                ResolveConsumableTurnStart(_playerUnit);
-                ApplyWarriorBeginTurnPassives(_playerUnit);
-                ApplyDruidBeginTurnPassives(_playerUnit);
-                ApplyBurningAura(_playerUnit);
+                if (_playerUnit.IsAlive)
+                    ResolveConsumableTurnStart(_playerUnit);
+                if (_playerUnit.IsAlive)
+                    ApplyWarriorBeginTurnPassives(_playerUnit);
+                if (_playerUnit.IsAlive)
+                    ApplyDruidBeginTurnPassives(_playerUnit);
+                if (_playerUnit.IsAlive)
+                    ApplyBurningAura(_playerUnit);
             }
             else
             {
@@ -1387,11 +1475,12 @@ namespace HexDemo
                     if (_enemyUnits[i] != null && _enemyUnits[i].IsAlive)
                     {
                         _enemyUnits[i].BeginTurn();
-                        ResolveConsumableTurnStart(_enemyUnits[i]);
-                        ApplyDruidBeginTurnPassives(_enemyUnits[i]);
-                        ApplyBurningAura(_enemyUnits[i]);
-                        if (!_enemyUnits[i].IsAlive)
-                            StartCoroutine(_enemyUnits[i].PlayDeathAndCleanup());
+                        if (_enemyUnits[i].IsAlive)
+                            ResolveConsumableTurnStart(_enemyUnits[i]);
+                        if (_enemyUnits[i].IsAlive)
+                            ApplyDruidBeginTurnPassives(_enemyUnits[i]);
+                        if (_enemyUnits[i].IsAlive)
+                            ApplyBurningAura(_enemyUnits[i]);
                     }
                 }
 
@@ -1414,7 +1503,7 @@ namespace HexDemo
                 _ui.Refresh();
                 if (!_playerUnit.IsAlive)
                 {
-                    yield return HandlePlayerDefeatFromStatus();
+                    yield return ResolveDeathsAndBattleEndRoutine();
                     yield break;
                 }
 
@@ -1439,7 +1528,7 @@ namespace HexDemo
 
                 yield return ResolveUnitTurnStartStatuses(enemy);
                 if (!enemy.IsAlive)
-                    yield return enemy.PlayDeathAndCleanup();
+                    yield return ResolveDeathsAndBattleEndRoutine();
             }
 
             if (_enemyUnits.All(enemy => enemy == null || !enemy.IsAlive))
@@ -1470,7 +1559,7 @@ namespace HexDemo
                 var pull = ResolveForcedMovement(tentacles[i], _playerUnit, 1, true);
                 if (pull == null || pull.path.Count <= 1)
                     continue;
-                yield return MoveUnitRoutine(_playerUnit, pull.path, 0);
+                yield return MoveUnitRoutine(_playerUnit, pull.path, 0, HexMovementCause.Forced);
                 successfulPulls++;
             }
         }
@@ -1511,13 +1600,18 @@ namespace HexDemo
                         continue;
 
                     yield return ResolveEnemyIntentCard(enemy, card);
-                    if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive || !enemy.IsAlive)
+                    yield return ResolveDeathsAndBattleEndRoutine();
+                    if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive)
                         yield break;
+                    if (!enemy.IsAlive)
+                        break;
 
                     yield return new WaitForSeconds(0.1f);
                 }
 
                 _enemyIntentSlots.Remove(enemy);
+                if (!enemy.IsAlive)
+                    continue;
                 enemy.EndTurn();
                 if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive)
                     yield break;
@@ -1669,6 +1763,9 @@ namespace HexDemo
             if (enemy == null)
                 return null;
 
+            if (string.Equals(enemy.State?.enemyDefinitionId, HexEncounterGenerator.OrcWarriorId, System.StringComparison.Ordinal))
+                return DrawOrcIntentCard(enemy, slotKind, out emptiedDrawPile);
+
             System.Predicate<HexCardDefinition> predicate = slotKind switch
             {
                 HexEnemyIntentSlotKind.Move => IsEnemyMoveCard,
@@ -1692,6 +1789,46 @@ namespace HexDemo
                 var matched = enemy.Deck.DrawFirstMatchingToHand(predicate, out emptiedDrawPile);
                 if (matched != null)
                     return matched;
+            }
+
+            return enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
+        }
+
+        private HexCardInstance DrawOrcIntentCard(
+            HexBattleUnit enemy,
+            HexEnemyIntentSlotKind slotKind,
+            out bool emptiedDrawPile)
+        {
+            emptiedDrawPile = false;
+            HexCardInstance card;
+            if (slotKind == HexEnemyIntentSlotKind.Move)
+            {
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == "enemy_orc_approach", out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == "enemy_orc_stance", out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                return enemy.Deck.DrawFirstMatchingToHand(definition => definition?.cardType != HexCardType.Attack, out emptiedDrawPile)
+                       ?? enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
+            }
+
+            if (slotKind == HexEnemyIntentSlotKind.Attack)
+            {
+                var target = GetPrimaryEnemyTarget(enemy);
+                bool canCharge = target != null && HexOrcWarriorRules.TryBuildChargePath(
+                    enemy.State.coord,
+                    target.State.coord,
+                    coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                    out _,
+                    out _);
+                bool adjacent = target != null && HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1;
+                string preferredId = canCharge || !adjacent ? "enemy_orc_charge" : "enemy_orc_heavy_slash";
+                card = enemy.Deck.DrawFirstMatchingToHand(definition => definition?.id == preferredId, out emptiedDrawPile);
+                if (card != null)
+                    return card;
+                return enemy.Deck.DrawFirstMatchingToHand(definition => definition?.cardType == HexCardType.Attack, out emptiedDrawPile)
+                       ?? enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
             }
 
             return enemy.Deck.DrawRandomToHand(out emptiedDrawPile);
@@ -1740,6 +1877,13 @@ namespace HexDemo
                     enemy.RefreshLabel();
                     return;
                 }
+                if (bottomId == "enemy_orc_bottom")
+                {
+                    enemy.State.orcChargeEmpowered = true;
+                    enemy.RefreshLabel();
+                    Debug.Log($"{enemy.State.displayName} triggered bottom card {definition.bottomCard.displayName}.");
+                    return;
+                }
                 if (bottomId == "enemy_vine_bottom")
                 {
                     GetPrimaryEnemyTarget(enemy)?.ApplyBind(2);
@@ -1760,8 +1904,14 @@ namespace HexDemo
                     var target = GetPrimaryEnemyTarget(enemy);
                     if (target != null)
                     {
-                        ApplyAttackDamage(enemy, target, GetModifiedDamage(enemy, target, 5 + Mathf.Max(0, enemy.State.strength)));
-                        target.ApplyBurn(2);
+                        ApplyAttackDamage(enemy, target, 5 + Mathf.Max(0, enemy.State.strength));
+                        if (target.IsAlive)
+                        {
+                            target.ApplyBurn(2);
+                            if (target.State.thorns > 0 && enemy.IsAlive)
+                                ApplyDamageToUnit(enemy, target.State.thorns, target, HexDamageTags.Reaction);
+                        }
+                        StartCoroutine(ResolveDeathsAndBattleEndRoutine());
                     }
                     enemy.GainStrength(1);
                     return;
@@ -1771,7 +1921,13 @@ namespace HexDemo
                     if (!PlaceRuinNear(enemy, 1, 4))
                     {
                         var target = GetPrimaryEnemyTarget(enemy);
-                        if (target != null) ApplyAttackDamage(enemy, target, 6);
+                        if (target != null)
+                        {
+                            ApplyAttackDamage(enemy, target, 6);
+                            if (target.IsAlive && target.State.thorns > 0 && enemy.IsAlive)
+                                ApplyDamageToUnit(enemy, target.State.thorns, target, HexDamageTags.Reaction);
+                            StartCoroutine(ResolveDeathsAndBattleEndRoutine());
+                        }
                     }
                     return;
                 }
@@ -1831,13 +1987,13 @@ namespace HexDemo
             {
                 if (primaryTarget != null && primaryTarget.IsAlive)
                 {
-                    int maxSteps = Mathf.Max(1, card.definition.amount);
+                    int maxSteps = Mathf.Max(1, card.EffectiveAmount);
                     var path = FindBestApproachPath(enemy, primaryTarget.State.coord, 1);
                     if (path != null && path.Count >= 2)
                     {
                         int takeCount = Mathf.Min(path.Count, maxSteps + 1);
                         var trimmed = path.Take(takeCount).ToList();
-                        yield return MoveUnitRoutine(enemy, trimmed, 0, primaryTarget.State.coord);
+                        yield return MoveUnitRoutine(enemy, trimmed, 0, HexMovementCause.Active, primaryTarget.State.coord);
                         if (HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= 1)
                             yield return ResolveDirectAttackRoutine(enemy, primaryTarget, 6);
                         resolved = true;
@@ -1848,7 +2004,7 @@ namespace HexDemo
             {
                 if (primaryTarget != null && primaryTarget.IsAlive)
                 {
-                    yield return ResolveEnemyIdealRangeMoveRoutine(enemy, primaryTarget, Mathf.Max(1, card.definition.amount));
+                    yield return ResolveEnemyIdealRangeMoveRoutine(enemy, primaryTarget, Mathf.Max(1, card.EffectiveAmount));
                     if (card.definition.id == "enemy_goblin_roll")
                         GainArmorWithFeedback(enemy, 5);
                     resolved = true;
@@ -1878,23 +2034,23 @@ namespace HexDemo
             else if (card.definition.id == "enemy_goblin_captain_net")
             {
                 if (primaryTarget != null && primaryTarget.IsAlive && HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= card.definition.castRange)
-                    primaryTarget.ApplyBind(Mathf.Max(1, card.definition.amount));
+                    primaryTarget.ApplyBind(Mathf.Max(1, card.EffectiveAmount));
                 resolved = true;
             }
             else if (card.definition.id == "enemy_goblin_captain_warcry")
             {
-                enemy.GainStrength(Mathf.Max(1, card.definition.amount));
+                enemy.GainStrength(Mathf.Max(1, card.EffectiveAmount));
                 TrySummonGoblinMinion(enemy);
                 resolved = true;
             }
             else if (card.definition.id == "enemy_chieftain_brace")
             {
-                GainArmorWithFeedback(enemy, Mathf.Max(1, card.definition.amount) * 3);
+                GainArmorWithFeedback(enemy, Mathf.Max(1, card.EffectiveAmount) * 3);
                 resolved = true;
             }
             else if (card.definition.id == "enemy_chieftain_drum")
             {
-                enemy.GainStrength(Mathf.Max(1, card.definition.amount));
+                enemy.GainStrength(Mathf.Max(1, card.EffectiveAmount));
                 resolved = true;
             }
 
@@ -1955,6 +2111,9 @@ namespace HexDemo
                 case "enemy_chieftain_charge":
                     yield return ResolveEnemyChargeRoutine(enemy, target, 1, 6, true);
                     break;
+                case "enemy_orc_charge":
+                    yield return ResolveOrcChargeRoutine(enemy, target);
+                    break;
                 case "enemy_chieftain_quake":
                     yield return ResolveChieftainQuakeRoutine(enemy, card);
                     break;
@@ -1980,7 +2139,7 @@ namespace HexDemo
                         {
                             var pull = ResolveForcedMovement(enemy, target, 1, true);
                             if (pull != null && pull.path.Count > 1)
-                                yield return MoveUnitRoutine(target, pull.path, 0);
+                                yield return MoveUnitRoutine(target, pull.path, 0, HexMovementCause.Forced);
                         }
                     }
                     break;
@@ -2118,13 +2277,109 @@ namespace HexDemo
             }
 
             if (path.Count > 1)
-                yield return MoveUnitRoutine(enemy, path, 0, target.State.coord);
+                yield return MoveUnitRoutine(enemy, path, 0, HexMovementCause.Active, target.State.coord);
 
             if (HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
                 yield return ResolveDirectAttackRoutine(enemy, target, damage);
 
             if (stunOnBlocked && hitObstacle)
                 enemy.ApplyStun(1);
+        }
+
+        private IEnumerator ResolveOrcChargeRoutine(HexBattleUnit enemy, HexBattleUnit target)
+        {
+            if (enemy == null || target == null || !enemy.IsAlive || !target.IsAlive)
+                yield break;
+
+            bool validCharge = HexOrcWarriorRules.TryBuildChargePath(
+                enemy.State.coord,
+                target.State.coord,
+                coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                out _,
+                out List<HexAxialCoord> movementPath);
+            if (!validCharge)
+            {
+                yield return MoveTowardTargetRoutine(enemy, target, 1);
+                enemy.GetComponent<HexOrcChargePreviewView>()?.Clear();
+                yield break;
+            }
+
+            if (movementPath.Count > 1)
+                yield return MoveUnitRoutine(enemy, movementPath, 0, HexMovementCause.Active, target.State.coord);
+
+            bool empowered = enemy.State.orcChargeEmpowered;
+            int damage = empowered
+                ? HexOrcWarriorRules.EmpoweredChargeDamage
+                : HexOrcWarriorRules.BaseChargeDamage;
+            int knockback = empowered
+                ? HexOrcWarriorRules.EmpoweredKnockback
+                : HexOrcWarriorRules.BaseKnockback;
+            enemy.State.orcChargeEmpowered = false;
+            yield return ResolveDirectAttackRoutine(enemy, target, damage, knockback: knockback);
+            enemy.GetComponent<HexOrcChargePreviewView>()?.Clear();
+        }
+
+        private void UpdateOrcChargeIntentPreviews()
+        {
+            for (int i = 0; i < _enemyUnits.Count; i++)
+            {
+                HexBattleUnit enemy = _enemyUnits[i];
+                if (enemy == null || !enemy.IsAlive ||
+                    !string.Equals(enemy.State?.enemyDefinitionId, HexEncounterGenerator.OrcWarriorId, System.StringComparison.Ordinal))
+                    continue;
+
+                var view = enemy.GetComponent<HexOrcChargePreviewView>();
+                bool hasChargeIntent = _enemyIntentSlots.TryGetValue(enemy, out var slots) &&
+                                       slots != null &&
+                                       slots.Any(slot => slot?.card?.definition?.id == "enemy_orc_charge");
+                if (!hasChargeIntent || !TryBuildOrcChargePreview(enemy, out List<HexAxialCoord> previewCoords, out _))
+                {
+                    view?.Clear();
+                    continue;
+                }
+
+                view ??= enemy.gameObject.AddComponent<HexOrcChargePreviewView>();
+                view.SetPreview(grid, previewCoords, enemy.State.orcChargeEmpowered);
+            }
+        }
+
+        private bool TryBuildOrcChargePreview(
+            HexBattleUnit enemy,
+            out List<HexAxialCoord> previewCoords,
+            out HexAxialCoord knockbackDestination)
+        {
+            previewCoords = new List<HexAxialCoord>();
+            knockbackDestination = enemy?.State?.coord ?? default;
+            HexBattleUnit target = GetPrimaryEnemyTarget(enemy);
+            if (enemy == null || target == null || !target.IsAlive ||
+                !HexOrcWarriorRules.TryBuildChargePath(
+                    enemy.State.coord,
+                    target.State.coord,
+                    coord => IsChargeObstacle(coord, enemy) || IsOccupied(coord, enemy),
+                    out _,
+                    out List<HexAxialCoord> movementPath))
+                return false;
+
+            previewCoords.AddRange(movementPath);
+            if (previewCoords.Count == 0 || !previewCoords[^1].Equals(target.State.coord))
+                previewCoords.Add(target.State.coord);
+
+            int knockback = enemy.State.orcChargeEmpowered
+                ? HexOrcWarriorRules.EmpoweredKnockback
+                : HexOrcWarriorRules.BaseKnockback;
+            ForcedMovementResult forcedMovement = ResolveForcedMovement(enemy, target, knockback, false);
+            if (forcedMovement != null)
+            {
+                knockbackDestination = forcedMovement.actualDestination;
+                if (!previewCoords[^1].Equals(knockbackDestination))
+                    previewCoords.Add(knockbackDestination);
+            }
+            else
+            {
+                knockbackDestination = target.State.coord;
+            }
+
+            return true;
         }
 
         private bool IsChargeObstacle(HexAxialCoord coord, HexBattleUnit movingUnit)
@@ -2192,7 +2447,7 @@ namespace HexDemo
 
             int maxSteps = Mathf.Min(enemy.State.currentMovePoints, bestPath.Count - 1);
             var trimmed = bestPath.Take(maxSteps + 1).ToList();
-            yield return MoveUnitRoutine(enemy, trimmed, trimmed.Count - 1, _playerUnit != null ? (HexAxialCoord?)_playerUnit.State.coord : null);
+            yield return MoveUnitRoutine(enemy, trimmed, trimmed.Count - 1, HexMovementCause.Active, _playerUnit != null ? (HexAxialCoord?)_playerUnit.State.coord : null);
         }
 
         private IEnumerator HandleBattleEnd(bool playerWon)
@@ -2201,12 +2456,37 @@ namespace HexDemo
                 yield break;
 
             _battleFinished = true;
+            _lastBattlePlayerWon = playerWon;
             _busy = true;
             yield return new WaitForSeconds(0.25f);
+            for (int i = 0; i < _units.Count; i++)
+                _units[i]?.ClearAllTemporaryStrength();
             _ui.Refresh();
             int goldReward = playerWon && awardVictoryGold ? victoryGoldAmount : 0;
             GameEvent.Send(HexGameEvents.BattleFinished, playerWon, goldReward, _playerUnit);
             BattleFinished?.Invoke(playerWon, goldReward, _playerUnit);
+        }
+
+        private IEnumerator ResolveDeathsAndBattleEndRoutine()
+        {
+            if (_battleFinished)
+                yield break;
+
+            var deadUnits = _units
+                .Where(unit => unit != null && !unit.IsAlive)
+                .Distinct()
+                .ToList();
+            for (int i = 0; i < deadUnits.Count; i++)
+                yield return deadUnits[i].PlayDeathAndCleanup();
+
+            if (_playerUnit == null || !_playerUnit.IsAlive)
+            {
+                yield return HandleBattleEnd(false);
+                yield break;
+            }
+
+            if (_enemyUnits.All(enemy => enemy == null || !enemy.IsAlive))
+                yield return HandleBattleEnd(true);
         }
 
         private void RegisterUpdate()
@@ -2272,7 +2552,7 @@ namespace HexDemo
                     yield break;
                 case "warrior_quick_step":
                 case "warrior_move_forward":
-                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.definition.amount));
+                    yield return ResolveCardMoveRoutine(source, targetedCoord, Mathf.Max(1, card.EffectiveAmount));
                     yield break;
                 case "warrior_heavy_blow":
                     yield return ResolveDirectAttackRoutine(source, target, 9);
@@ -2640,7 +2920,7 @@ namespace HexDemo
                     yield break;
                 }
                 case "warrior_windstep_ready":
-                    source.State.warriorWindstepReady = true;
+                    source.State.warriorWindstepStrengthPerMoveThisTurn += card.EffectiveAmount;
                     yield break;
                 case "warrior_opening_stagger":
                     source.State.warriorFirstAttackKnockback = true;
@@ -2789,7 +3069,7 @@ namespace HexDemo
             var path = new List<HexAxialCoord> { source.State.coord, destination };
             if (IsLivingWallMovementPathBlocked(path, source))
                 yield break;
-            yield return MoveUnitRoutine(source, path, 0);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active);
         }
 
         private void PlaceTemporaryObstaclesAround(HexBattleUnit source, int count, int lifespanTurns)
@@ -2956,7 +3236,7 @@ namespace HexDemo
             if (path.Count - 1 > maxSteps)
                 path = path.Take(maxSteps + 1).ToList();
 
-            yield return MoveUnitRoutine(source, path, 0, target.State.coord);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, target.State.coord);
         }
 
         private IEnumerator KnockbackAdjacentEnemiesRoutine(HexBattleUnit source, int distance)
@@ -3265,7 +3545,7 @@ namespace HexDemo
             bool empowered = HasAnyFearIntent();
             var movement = ResolveForcedMovement(source, target, empowered ? 3 : 1, false);
             if (movement != null && movement.path.Count > 1)
-                yield return MoveUnitRoutine(target, movement.path, 0);
+                yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
             if (movement != null && movement.collided)
                 ApplyDamageToUnit(target, 50, source);
         }
@@ -3306,11 +3586,10 @@ namespace HexDemo
                     break;
                 case "move":
                     source.State.warriorMoveEventThisTurn = true;
-                    if (source.State.warriorWindstepReady && !source.State.warriorWindstepUsedThisTurn)
-                    {
-                        source.State.warriorWindstepUsedThisTurn = true;
-                        source.GainStrength(2);
-                    }
+                    if (source.State.warriorWindstepStrengthPerMoveThisTurn > 0)
+                        source.GainTemporaryStrength(
+                            source.State.warriorWindstepStrengthPerMoveThisTurn,
+                            HexTemporaryStrengthDuration.UntilEndOfTurn);
                     if (source.State.warriorLightGear && !source.State.warriorLightGearUsedThisTurn)
                     {
                         source.State.warriorLightGearUsedThisTurn = true;
@@ -3749,7 +4028,7 @@ namespace HexDemo
                     break;
                 case "愤怒":
                     yield return ResolveDirectAttackRoutine(source, target, source.Deck.Hand.Count(instance => instance.definition.cardType == HexCardType.Attack));
-                    card.definition.amount += 6;
+                    card.IncreaseBattleAmount(6);
                     break;
                 case "无敌斩":
                     DrawCardsCostFree(source, Mathf.Max(0, energySpent) + 2);
@@ -3781,19 +4060,29 @@ namespace HexDemo
         {
             source.PlayAttackAnimation();
             yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int totalHealthLost = 0;
+            int totalThornsDamage = 0;
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
-                ApplyDamageWithFeedback(enemy, GetModifiedDamage(source, enemy, 6), source);
-                enemy.ApplyBleed(1);
+                HexDamageResult result = ApplyAttackDamage(source, enemy, 6, snapshot);
+                totalHealthLost += result.healthLost;
+                if (enemy.IsAlive)
+                {
+                    enemy.ApplyBleed(1);
+                    totalThornsDamage += Mathf.Max(0, enemy.State.thorns);
+                }
                 if (enemy.IsAlive)
                     enemy.PlayHitAnimation();
-                else
-                    yield return enemy.PlayDeathAndCleanup();
             }
+            CompleteAttackDamageBatch(source, totalHealthLost);
+            if (totalThornsDamage > 0 && source.IsAlive)
+                ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
 
         private IEnumerator ResolveRepeatedHammerRoutine(HexBattleUnit source, HexBattleUnit target)
@@ -3873,6 +4162,9 @@ namespace HexDemo
                 source.PlayAttackAnimation();
                 yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
 
+                HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+                int totalHealthLost = 0;
+                int totalThornsDamage = 0;
                 for (int i = 0; i < targets.Count; i++)
                 {
                     var areaTarget = targets[i];
@@ -3880,18 +4172,24 @@ namespace HexDemo
                         continue;
 
                     areaTarget.FaceTarget(source.transform.position);
-                    int dealt = GetModifiedDamage(source, areaTarget, 6 + Mathf.Max(0, source.State.strength));
-                    ApplyAttackDamage(source, areaTarget, dealt);
-                    source.State.damageDealtThisTurn += dealt;
+                    HexDamageResult result = ApplyAttackDamage(
+                        source,
+                        areaTarget,
+                        6 + Mathf.Max(0, source.State.strength),
+                        snapshot);
+                    totalHealthLost += result.healthLost;
 
                     bool survived = areaTarget.IsAlive;
                     if (survived)
                     {
                         areaTarget.PlayHitAnimation();
-                        if (areaTarget.State.thorns > 0 && source.IsAlive)
-                            ApplyDamageToUnit(source, areaTarget.State.thorns, areaTarget);
+                        totalThornsDamage += Mathf.Max(0, areaTarget.State.thorns);
                     }
                 }
+
+                CompleteAttackDamageBatch(source, totalHealthLost);
+                if (totalThornsDamage > 0 && source.IsAlive)
+                    ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
 
                 float longestHitDuration = 0.08f;
                 for (int i = 0; i < targets.Count; i++)
@@ -3907,14 +4205,9 @@ namespace HexDemo
 
                 yield return new WaitForSeconds(Mathf.Max(0.08f, longestHitDuration));
 
-                for (int i = 0; i < targets.Count; i++)
-                {
-                    var areaTarget = targets[i];
-                    if (areaTarget == null || areaTarget.IsAlive)
-                        continue;
-
-                    yield return areaTarget.PlayDeathAndCleanup();
-                }
+                yield return ResolveDeathsAndBattleEndRoutine();
+                if (_battleFinished || !source.IsAlive)
+                    yield break;
             }
         }
 
@@ -3993,7 +4286,7 @@ namespace HexDemo
 
             var path = FindBestApproachPath(source, target.State.coord, 1);
             if (path != null && path.Count >= 2)
-                yield return MoveUnitRoutine(source, path, 0, target.State.coord);
+                yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, target.State.coord);
 
             if (!source.IsAlive || !target.IsAlive)
                 yield break;
@@ -4019,19 +4312,35 @@ namespace HexDemo
                     hitEnemies.Add(enemy);
             }
 
-            yield return MoveUnitRoutine(source, path, 0, aimedCoord);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, aimedCoord);
 
+            if (!source.IsAlive || _battleFinished)
+                yield break;
+
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int totalHealthLost = 0;
+            int totalThornsDamage = 0;
             foreach (var enemy in hitEnemies)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
-                ApplyAttackDamage(source, enemy, GetModifiedDamage(source, enemy, passThroughDamage + Mathf.Max(0, source.State.strength)));
+                HexDamageResult result = ApplyAttackDamage(
+                    source,
+                    enemy,
+                    passThroughDamage + Mathf.Max(0, source.State.strength),
+                    snapshot);
+                totalHealthLost += result.healthLost;
                 if (enemy.IsAlive)
+                {
                     enemy.PlayHitAnimation();
-                else
-                    yield return enemy.PlayDeathAndCleanup();
+                    totalThornsDamage += Mathf.Max(0, enemy.State.thorns);
+                }
             }
+            CompleteAttackDamageBatch(source, totalHealthLost);
+            if (totalThornsDamage > 0 && source.IsAlive)
+                ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
 
         private IEnumerator ResolveArsonRoutine(HexBattleUnit source, HexBattleUnit target, HexCardInstance card)
@@ -4057,10 +4366,10 @@ namespace HexDemo
             int damage = target.State.maxHealth < source.State.maxHealth ? 20 : 10;
             bool targetWasAlive = target.IsAlive;
             yield return ResolveDirectAttackRoutine(source, target, damage);
-            if (targetWasAlive && !target.IsAlive)
+            if (targetWasAlive && !target.IsAlive && source.IsAlive)
             {
                 source.State.maxHealth += 3;
-                source.State.currentHealth = Mathf.Min(source.State.maxHealth, source.State.currentHealth + 3);
+                source.Heal(3);
             }
         }
 
@@ -4110,34 +4419,38 @@ namespace HexDemo
                 yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
                 target.FaceTarget(source.transform.position);
 
-                int dealt = GetModifiedDamage(source, target, baseDamage + Mathf.Max(0, source.State.strength));
-                ApplyAttackDamage(source, target, dealt);
-                onHit?.Invoke(dealt);
+                HexDamageResult damageResult = ApplyAttackDamage(
+                    source,
+                    target,
+                    baseDamage + Mathf.Max(0, source.State.strength));
+                onHit?.Invoke(damageResult.healthLost);
                 bool targetSurvivedHit = target.IsAlive;
                 if (targetSurvivedHit)
                 {
                     target.PlayHitAnimation();
                     yield return new WaitForSeconds(Mathf.Max(0.08f, target.GetHitDuration() * 0.85f));
-                    if (target.State.thorns > 0 && source.IsAlive)
-                        ApplyDamageToUnit(source, target.State.thorns, target);
+                    if (bleed > 0)
+                        target.ApplyBleed(bleed);
+                    if (weak > 0)
+                        target.ApplyWeak(weak);
+                    if (vulnerable > 0)
+                        target.ApplyVulnerable(vulnerable);
+                    if (addDaze > 0)
+                    {
+                        for (int i = 0; i < addDaze; i++)
+                            target.Deck.AddToDrawPile(HexCardLibrary.GetDaze());
+                    }
+                    if (knockback > 0)
+                        yield return ApplyKnockbackRoutine(source, target, knockback);
+                    if (_battleFinished)
+                        yield break;
+                    if (target.IsAlive && target.State.thorns > 0 && source.IsAlive)
+                        ApplyDamageToUnit(source, target.State.thorns, target, HexDamageTags.Reaction);
                 }
 
-                if (bleed > 0)
-                    target.ApplyBleed(bleed);
-                if (weak > 0)
-                    target.ApplyWeak(weak);
-                if (vulnerable > 0)
-                    target.ApplyVulnerable(vulnerable);
-                if (addDaze > 0)
-                {
-                    for (int i = 0; i < addDaze; i++)
-                        target.Deck.AddToDrawPile(HexCardLibrary.GetDaze());
-                }
-                if (knockback > 0)
-                    yield return ApplyKnockbackRoutine(source, target, knockback);
-
-                if (!target.IsAlive)
-                    yield return target.PlayDeathAndCleanup();
+                yield return ResolveDeathsAndBattleEndRoutine();
+                if (_battleFinished || !source.IsAlive || !target.IsAlive)
+                    yield break;
             }
         }
 
@@ -4297,17 +4610,26 @@ namespace HexDemo
             }
         }
 
-        private void HandlePostMovementPassives(HexBattleUnit unit, IReadOnlyList<HexAxialCoord> path, HexAxialCoord? towardTargetCoord, int movedDistance)
+        private void HandlePostMovement(
+            HexBattleUnit unit,
+            IReadOnlyList<HexAxialCoord> path,
+            HexMovementCause cause,
+            HexAxialCoord? towardTargetCoord,
+            int movedDistance)
         {
             ResolveConsumableMovementTriggers(unit, path);
-            if (unit?.State != null && unit.State.profession == HexCardProfession.Warrior && movedDistance > 0)
+            if (unit == null || !unit.IsAlive)
+                return;
+            if (cause != HexMovementCause.Active || movedDistance <= 0)
+                return;
+            if (unit.State != null && unit.State.profession == HexCardProfession.Warrior)
             {
                 MarkWarriorEvent(unit, "move");
                 if (unit.State.warriorSkirmishArmorOnMove)
                     GainArmorWithFeedback(unit, 2);
             }
 
-            if (!IsDruid(unit) || path == null || path.Count < 2 || movedDistance <= 0)
+            if (!IsDruid(unit) || path == null || path.Count < 2)
                 return;
 
             if (towardTargetCoord.HasValue &&
@@ -4535,7 +4857,7 @@ namespace HexDemo
             if (path == null || path.Count < 2)
                 yield break;
 
-            yield return MoveUnitRoutine(unit, path, 0);
+            yield return MoveUnitRoutine(unit, path, 0, HexMovementCause.Active);
         }
 
         private List<HexAxialCoord> BuildCardMovementPath(HexBattleUnit unit, HexAxialCoord destination, int maxSteps)
@@ -4577,7 +4899,7 @@ namespace HexDemo
             if (path == null || path.Count < 2)
                 yield break;
 
-            yield return MoveUnitRoutine(enemy, path, 0, target.State.coord);
+            yield return MoveUnitRoutine(enemy, path, 0, HexMovementCause.Active, target.State.coord);
         }
 
         private List<HexAxialCoord> FindBestIdealRangeMovePath(
@@ -4713,7 +5035,7 @@ namespace HexDemo
             }
 
             if (bestPath != null)
-                yield return MoveUnitRoutine(unit, bestPath, 0, threat.State.coord);
+                yield return MoveUnitRoutine(unit, bestPath, 0, HexMovementCause.Active, threat.State.coord);
         }
 
         private void ApplyBurnToAdjacentEnemies(HexBattleUnit source, int amount)
@@ -4865,24 +5187,34 @@ namespace HexDemo
 
             source.PlayAttackAnimation();
             yield return new WaitForSeconds(Mathf.Max(0.1f, source.GetAttackDuration() * 0.7f));
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            int totalHealthLost = 0;
+            int totalThornsDamage = 0;
             for (int i = 0; i < targets.Count; i++)
             {
                 var target = targets[i];
                 if (target == null || !target.IsAlive)
                     continue;
 
-                ApplyAttackDamage(source, target, GetModifiedDamage(source, target, card.definition.amount + Mathf.Max(0, source.State.strength)));
+                HexDamageResult result = ApplyAttackDamage(
+                    source,
+                    target,
+                    card.EffectiveAmount + Mathf.Max(0, source.State.strength),
+                    snapshot);
+                totalHealthLost += result.healthLost;
                 if (target.IsAlive)
                 {
+                    totalThornsDamage += Mathf.Max(0, target.State.thorns);
                     var push = ResolveForcedMovement(source, target, 1, false);
                     if (push != null && push.path.Count > 1)
-                        yield return MoveUnitRoutine(target, push.path, 0);
-                }
-                else
-                {
-                    yield return target.PlayDeathAndCleanup();
+                        yield return MoveUnitRoutine(target, push.path, 0, HexMovementCause.Forced);
                 }
             }
+
+            CompleteAttackDamageBatch(source, totalHealthLost);
+            if (totalThornsDamage > 0 && source.IsAlive)
+                ApplyDamageToUnit(source, totalThornsDamage, null, HexDamageTags.Reaction);
+            yield return ResolveDeathsAndBattleEndRoutine();
 
             ConvertRandomBarrierToRuin(source.State.coord, Mathf.Max(1, card.definition.effectRadius), 4);
         }
@@ -5055,7 +5387,9 @@ namespace HexDemo
                     unit.Heal(Mathf.Max(1, amount));
                     break;
                 case HexTerrainPickupType.TemporaryStrength:
-                    unit.GainStrength(Mathf.Max(1, amount));
+                    unit.GainTemporaryStrength(
+                        Mathf.Max(1, amount),
+                        HexTemporaryStrengthDuration.UntilEndOfBattle);
                     break;
                 case HexTerrainPickupType.TemporaryCard:
                     AddGeneratedCardToHand(unit, HexCardLibrary.GetTemporaryThrowingAxe());
@@ -5105,7 +5439,7 @@ namespace HexDemo
                 {
                     var card = enemy.Deck.Hand[cardIndex];
                     if (card.definition.effectType == HexCardEffectType.Attack)
-                        total += Mathf.Max(0, card.definition.amount + enemy.State.strength);
+                        total += Mathf.Max(0, card.EffectiveAmount + enemy.State.strength);
                 }
             }
 
@@ -5138,23 +5472,34 @@ namespace HexDemo
                 _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.Armor, gainedArmor);
         }
 
-        private int ApplyDamageWithFeedback(HexBattleUnit target, int amount, HexBattleUnit source)
+        private HexDamageResult ApplyDamageWithFeedback(
+            HexBattleUnit target,
+            int amount,
+            HexBattleUnit source,
+            HexDamageTags tags = HexDamageTags.Environment,
+            HexAttackModifierSnapshot? attackModifierSnapshot = null,
+            float targetDamageMultiplier = 1f)
         {
             if (target == null || amount <= 0)
-                return 0;
+                return HexDamageResult.None(amount);
 
-            int beforeArmor = target.State.armor;
             int beforeHealth = target.State.currentHealth;
-            int healthLost = target.ApplyDamage(amount);
-            int armorLost = Mathf.Max(0, beforeArmor - target.State.armor);
-            if (armorLost > 0)
-                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.ArmorDamage, armorLost);
-            if (healthLost > 0)
-                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.HealthDamage, healthLost);
-            else if (armorLost <= 0 && beforeHealth == target.State.currentHealth)
+            HexDamageResult result = HexDamageResolver.Resolve(
+                new HexDamageRequest(
+                    source,
+                    target,
+                    amount,
+                    tags,
+                    attackModifierSnapshot,
+                    targetDamageMultiplier));
+            if (result.armorLost > 0)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.ArmorDamage, result.armorLost);
+            if (result.healthLost > 0)
+                _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.HealthDamage, result.healthLost);
+            else if (result.armorLost <= 0 && beforeHealth == target.State.currentHealth)
                 _ui?.ShowFloatingCombatText(target, HexFloatingFeedbackKind.Blocked, 0);
 
-            if ((healthLost > 0 || armorLost > 0) &&
+            if ((result.healthLost > 0 || result.armorLost > 0) &&
                 target.IsAlive &&
                 target != source &&
                 source == _activeAttackPassiveSource &&
@@ -5163,7 +5508,7 @@ namespace HexDemo
                 source.ApplyBattleLongAttackPassives(target);
             }
 
-            return healthLost;
+            return result;
         }
 
         private static string GetUnitDisplayName(HexBattleUnit unit)
@@ -5210,22 +5555,23 @@ namespace HexDemo
                 GainArmorWithFeedback(unit, exhaustedCost * unit.State.armorOnExhaustCost);
         }
 
-        private void ApplyDamageToUnit(HexBattleUnit target, int amount, HexBattleUnit source)
+        private HexDamageResult ApplyDamageToUnit(
+            HexBattleUnit target,
+            int amount,
+            HexBattleUnit source,
+            HexDamageTags tags = HexDamageTags.Environment)
         {
             if (target == null || amount <= 0)
-                return;
+                return HexDamageResult.None(amount);
 
             int beforeHealth = target.State.currentHealth;
-            int healthLost = ApplyDamageWithFeedback(target, amount, source);
-            if (healthLost > 0 && source != null && source.State.vampirism > 0)
-            {
-                source.Heal(healthLost);
-                source.State.vampirism = Mathf.Max(0, source.State.vampirism - 1);
-            }
+            HexDamageResult result = ApplyDamageWithFeedback(target, amount, source, tags);
 
             int selfHealthLost = Mathf.Max(0, beforeHealth - target.State.currentHealth);
             if (selfHealthLost > 0 && target == source && target.State.gainStrengthOnSelfDamage)
                 target.GainStrength(1);
+
+            return result;
         }
 
         private bool HasRuinInCoords(IEnumerable<HexAxialCoord> coords)
@@ -5274,36 +5620,46 @@ namespace HexDemo
             }
         }
 
-        private void ApplyAttackDamage(HexBattleUnit source, HexBattleUnit target, int amount)
+        private HexDamageResult ApplyAttackDamage(HexBattleUnit source, HexBattleUnit target, int baseDamage)
         {
-            if (target == null || amount <= 0)
-                return;
+            HexAttackModifierSnapshot snapshot = BeginAttackDamageBatch(source);
+            HexDamageResult result = ApplyAttackDamage(source, target, baseDamage, snapshot);
+            CompleteAttackDamageBatch(source, result.healthLost);
+            return result;
+        }
 
-            bool axeArmorBreak = source != null && source.State.axeAppliesArmorBreak &&
-                (source.State.weapon == HexWeaponType.Axe || source.State.allWeaponsEquipped);
-            bool swordBrittle = source != null && source.State.swordAppliesBrittle &&
-                (source.State.weapon == HexWeaponType.Sword || source.State.allWeaponsEquipped);
-            bool hammerArmorCrush = source != null && source.State.hammerDoubleArmorDamage &&
-                (source.State.weapon == HexWeaponType.Hammer || source.State.allWeaponsEquipped);
+        private HexAttackModifierSnapshot BeginAttackDamageBatch(HexBattleUnit source)
+        {
+            HexAttackModifierSnapshot snapshot = HexDamageResolver.CaptureAttackModifiers(source);
+            HexDamageResolver.ConsumeAttackModifiers(source, snapshot);
+            return snapshot;
+        }
 
-            if (axeArmorBreak)
-                target.State.armorBreak += 1;
-            if (swordBrittle)
-                target.State.brittle += 1;
-            if (hammerArmorCrush && target.State.armor > 0)
-                target.State.armor = Mathf.Max(0, target.State.armor - Mathf.Min(target.State.armor, amount));
+        private void CompleteAttackDamageBatch(HexBattleUnit source, int totalHealthLost)
+        {
+            HexDamageResolver.CompleteAttackBatch(source, totalHealthLost);
+        }
 
-            if (target.State.deflect > 0)
-            {
-                amount = Mathf.CeilToInt(amount * 0.75f);
-                target.State.deflect = Mathf.Max(0, target.State.deflect - 1);
-            }
-            if (target.State.block > 0)
-                amount = Mathf.Max(0, amount - target.State.block);
-            if (target.State.enemyDamageReductionActive && HasAdjacentStructure(target, HexTerrainStructureType.Barrier))
-                amount = Mathf.CeilToInt(amount * 0.75f);
+        private HexDamageResult ApplyAttackDamage(
+            HexBattleUnit source,
+            HexBattleUnit target,
+            int baseDamage,
+            HexAttackModifierSnapshot snapshot)
+        {
+            if (target == null || baseDamage <= 0)
+                return HexDamageResult.None(baseDamage);
 
-            ApplyDamageWithFeedback(target, amount, source);
+            float targetDamageMultiplier =
+                target.State.enemyDamageReductionActive && HasAdjacentStructure(target, HexTerrainStructureType.Barrier)
+                    ? 0.75f
+                    : 1f;
+            HexDamageResult result = ApplyDamageWithFeedback(
+                target,
+                baseDamage,
+                source,
+                HexDamageTags.Attack,
+                snapshot,
+                targetDamageMultiplier);
 
             if (source != null && source.State.enemyIgnitionPassive && target.IsAlive && Random.value < 0.5f)
                 target.ApplyBurn(1);
@@ -5313,12 +5669,14 @@ namespace HexDemo
                 grid != null && grid.TryGetTile(target.State.coord, out var deathTile) && deathTile != null)
                 deathTile.SetProp(HexPropLibrary.DefaultRuinPropId, 4);
 
-            if (target.State.blastBarrelDamage > 0 && amount > 0)
+            if (target.State.blastBarrelDamage > 0 && result.finalDamage > 0)
             {
                 int blast = target.State.blastBarrelDamage;
                 target.State.blastBarrelDamage = 0;
                 TriggerBlastBarrel(target, source, blast);
             }
+
+            return result;
         }
 
         private void TriggerBlastBarrel(HexBattleUnit barreled, HexBattleUnit source, int blastDamage)
@@ -5462,7 +5820,7 @@ namespace HexDemo
                 {
                     int maxSteps = Mathf.Min(totalMove, path.Count - 1);
                     var trimmed = path.Take(maxSteps + 1).ToList();
-                    yield return MoveUnitRoutine(unit, trimmed, maxSteps, unit.State.allureSourceCoord);
+                    yield return MoveUnitRoutine(unit, trimmed, maxSteps, HexMovementCause.Forced, unit.State.allureSourceCoord);
                 }
             }
 
@@ -5587,46 +5945,6 @@ namespace HexDemo
             for (int i = 0; i < unit.Deck.Hand.Count; i++)
                 highest = Mathf.Max(highest, unit.GetCardEnergyCost(unit.Deck.Hand[i]));
             return highest;
-        }
-
-        private static int GetModifiedDamage(HexBattleUnit source, HexBattleUnit target, int baseDamage)
-        {
-            int result = baseDamage;
-            if (source != null && source.State != null)
-            {
-                if (source.State.warriorNextAttackDamageBonus > 0)
-                {
-                    int focusBonus = source.State.warriorNextAttackDamageBonus;
-                    if (source.State.warriorFocusEffectDoubleThisCard)
-                    {
-                        focusBonus *= 2;
-                        source.State.warriorFocusEffectDoubleThisCard = false;
-                    }
-                    result += focusBonus;
-                    source.State.warriorNextAttackDamageBonus = source.State.warriorNextAttackDamageBonusQueued;
-                    source.State.warriorNextAttackDamageBonusQueued = 0;
-                }
-                if (source.State.weak > 0)
-                    result = Mathf.FloorToInt(result * 0.75f);
-                if (source.State.warriorDamageMultiplierThisTurn > 1)
-                    result *= source.State.warriorDamageMultiplierThisTurn;
-                if (source.State.vigor > 0)
-                {
-                    result += source.State.vigor;
-                    source.State.vigor = 0;
-                }
-            }
-
-            if (target != null && target.State != null && target.State.vulnerable > 0)
-                result = Mathf.CeilToInt(result * 1.25f);
-
-            if (source != null && source.State != null && source.State.momentum > 0)
-            {
-                result = Mathf.CeilToInt(result * 1.5f);
-                source.State.momentum = Mathf.Max(0, source.State.momentum - 1);
-            }
-
-            return Mathf.Max(0, result);
         }
 
         private static void AppendStatusEffects(StringBuilder builder, HexBattleUnit unit)
@@ -6456,7 +6774,7 @@ namespace HexDemo
                 return;
             }
 
-            int cardMoveRange = Mathf.Max(1, _draggedCard.definition.amount);
+            int cardMoveRange = Mathf.Max(1, _draggedCard.EffectiveAmount);
             var reachable = GetReachableCosts(_playerUnit, cardMoveRange);
             bool showGlobalReachable = _hoveredTile == null || _hoveredTile.coord.Equals(_playerUnit.State.coord);
             foreach (var tile in grid.Tiles.Values)

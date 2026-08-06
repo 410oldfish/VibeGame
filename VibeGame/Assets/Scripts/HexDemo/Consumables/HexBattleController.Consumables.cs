@@ -176,8 +176,9 @@ namespace HexDemo
             switch (definition.effectType)
             {
                 case HexConsumableEffectType.Strength:
-                    _playerUnit.GainStrength(definition.amount);
-                    _playerUnit.State.consumableTempStrength += definition.amount;
+                    _playerUnit.GainTemporaryStrength(
+                        definition.amount,
+                        HexTemporaryStrengthDuration.UntilEndOfTurn);
                     return true;
                 case HexConsumableEffectType.Toughness:
                     _playerUnit.GainToughness(definition.amount);
@@ -352,8 +353,10 @@ namespace HexDemo
 
             if (unit.State.poison > 0)
             {
-                ApplyDamageToUnit(unit, unit.State.poison, null);
+                ApplyDamageToUnit(unit, unit.State.poison, null, HexDamageTags.Status);
                 unit.State.poison = Mathf.Max(0, unit.State.poison - 1);
+                if (!unit.IsAlive)
+                    return;
             }
 
             if (unit.State.regeneration > 0)
@@ -390,8 +393,7 @@ namespace HexDemo
 
             if (_strengthRitualTiles.ContainsKey(unit.State.coord))
             {
-                unit.GainStrength(3);
-                unit.State.consumableTempStrength += 3;
+                unit.GainTemporaryStrength(3, HexTemporaryStrengthDuration.UntilEndOfTurn);
             }
 
             if (unit == _playerUnit)
@@ -617,10 +619,7 @@ namespace HexDemo
 
         private IEnumerator ResolveConsumableDeath(HexBattleUnit target)
         {
-            if (target != null && !target.IsAlive)
-                yield return target.PlayDeathAndCleanup();
-            if (_enemyUnits.All(enemy => enemy == null || !enemy.IsAlive))
-                yield return HandleBattleEnd(true);
+            yield return ResolveDeathsAndBattleEndRoutine();
         }
     }
 }

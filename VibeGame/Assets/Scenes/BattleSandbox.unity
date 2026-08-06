@@ -285,7 +285,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 620ede3b7d69a4a44b16b6925069d350, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexBattleSandboxBootstrap
-  scenario: {fileID: 11400000, guid: e1e1d66e0d224064a8e80189fcbd9ae8, type: 2}
+  scenario: {fileID: 11400000, guid: 48a786f0a8b64ed4ba2f6ee95575a6b1, type: 2}
   autoStartOnPlay: 1
 --- !u!4 &747267465
 Transform:

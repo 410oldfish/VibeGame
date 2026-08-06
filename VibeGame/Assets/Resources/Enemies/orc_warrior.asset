@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf63922b91d736046bcd101d46b08c66, type: 3}
+  m_Name: orc_warrior
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexEnemyDefinitionSO
+  id: orc_warrior
+  displayName: "\u517D\u4EBA\u6218\u58EB"
+  encounterType: 0
+  intentPattern: 5
+  attackMinRange: 1
+  attackMaxRange: 3
+  emptyDrawPileStrengthGain: 0
+  maxSummons: 0
+  summonHealth: 0
+  phaseTwoHealthRatio: 0
+  intentSlots: 0000000001000000
+  deckCardIds:
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_charge
+  - enemy_orc_heavy_slash
+  - enemy_orc_heavy_slash
+  - enemy_orc_heavy_slash
+  - enemy_orc_approach
+  - enemy_orc_approach
+  - enemy_orc_stance
+  phaseTwoDeckCardIds: []
+  bottomCardId: enemy_orc_bottom
