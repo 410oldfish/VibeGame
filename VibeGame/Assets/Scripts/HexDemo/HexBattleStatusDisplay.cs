@@ -11,7 +11,16 @@ namespace HexDemo
             if (state == null)
                 return entries;
 
-            TryAdd(entries, BattleHudStatusKind.Strength, state.strength, "力量", "攻击伤害增加", true, "力", "strength");
+            int endOfTurnStrength = Mathf.Max(0, state.temporaryStrengthUntilEndOfTurn);
+            int endOfBattleStrength = Mathf.Max(0, state.temporaryStrengthUntilEndOfBattle);
+            int temporaryStrength = endOfTurnStrength + endOfBattleStrength;
+            int permanentStrength = Mathf.Max(0, state.strength - temporaryStrength);
+            TryAdd(entries, BattleHudStatusKind.Strength, permanentStrength, "力量", "攻击伤害增加", true, "力", "strength");
+            if (temporaryStrength > 0)
+            {
+                string expiry = $"回合末移除 {endOfTurnStrength}；战斗末移除 {endOfBattleStrength}";
+                TryAdd(entries, BattleHudStatusKind.Strength, temporaryStrength, "临时力量", expiry, true, "临", "temporary_strength");
+            }
             TryAdd(entries, BattleHudStatusKind.Steady, state.toughness, "坚韧", "获得护甲时增加护甲值", true, "韧", "toughness");
             TryAdd(entries, BattleHudStatusKind.Other, state.agility, "敏捷", "每层使每回合一张随机牌临时减费", true, "敏", "agility");
             TryAdd(entries, BattleHudStatusKind.Other, state.wisdom, "智慧", "每回合额外抽牌", true, "智", "wisdom");

@@ -13,6 +13,18 @@ namespace HexDemo
         Enemy = 1,
     }
 
+    public enum HexMovementCause
+    {
+        Active = 0,
+        Forced = 1,
+    }
+
+    public enum HexTemporaryStrengthDuration
+    {
+        UntilEndOfTurn = 0,
+        UntilEndOfBattle = 1,
+    }
+
     public enum HexCardTargetType
     {
         Self = 0,
@@ -767,7 +779,8 @@ namespace HexDemo
         public int consumableEggTartTurns;
         public int flyingSecretTurns;
         public int stealSecretTurns;
-        public int consumableTempStrength;
+        public int temporaryStrengthUntilEndOfTurn;
+        public int temporaryStrengthUntilEndOfBattle;
         public int consumableTempToughness;
         public bool firstAttackBonusPending;
         public bool weaponSkillFree;
@@ -818,12 +831,11 @@ namespace HexDemo
         public bool warriorGainStrengthOnFearPlayed;
         public bool warriorArmorOnFearAdded;
         public bool warriorHealOnBleedGain;
-        public bool warriorWindstepReady;
+        public int warriorWindstepStrengthPerMoveThisTurn;
         public bool warriorFirstAttackKnockback;
         public bool warriorOpeningReach;
         public bool warriorLightGear;
         public bool warriorFearEcho;
-        public bool warriorWindstepUsedThisTurn;
         public bool warriorFirstAttackCardUsedThisTurn;
         public bool warriorLightGearUsedThisTurn;
         public bool warriorFearEchoUsedThisTurn;
@@ -1927,7 +1939,7 @@ namespace HexDemo
                 W("warrior_fortify", "筑垒", HexCardType.Action, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 1, 0, "Uncommon", "邻格空位生成临时障碍1回合。虚无。", moveColor, "移动", "移出游戏"),
                 W("warrior_block_path", "封路", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Direction, 2, 1, 1, 0, "Rare", "指定直线1生成只存在两回合、生命值为1的残骸。", skillColor, "移动"),
                 W("warrior_light_gear", "轻装", HexCardType.Power, HexCardEffectType.None, HexCardTargetType.Self, 1, 1, 0, 0, "Uncommon", "下两个回合首次移动不消耗费用。", powerColor, "移动"),
-                W("warrior_windstep_ready", "踏风预备", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "本回合每次位移获得2临时力量。", skillColor, "移动", "草案"),
+                W("warrior_windstep_ready", "踏风预备", HexCardType.Skill, HexCardEffectType.None, HexCardTargetType.Self, 1, 2, 0, 0, "Uncommon", "本回合每次主动位移获得2临时力量。", skillColor, "移动", "草案"),
                 W("warrior_flash_step_slash", "疾步斩", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 1, 5, 1, 0, "Uncommon", "移动1后邻格5伤；本回合已触发位移时再5。", moveColor, "移动"),
                 W("warrior_charge", "猛冲", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.EnemyUnit, 2, 4, 1, 0, "Rare", "直线推进1；碰撞+4；本回合已触发位移时撞障碍再+8。", moveColor, "移动"),
                 W("warrior_quake", "震地", HexCardType.Attack, HexCardEffectType.None, HexCardTargetType.Tile, 2, 4, 1, 1, "Rare", "移动1；邻格全体4伤；本回合已触发位移时+2/目标；随机1邻格障碍→残骸。", moveColor, "移动"),

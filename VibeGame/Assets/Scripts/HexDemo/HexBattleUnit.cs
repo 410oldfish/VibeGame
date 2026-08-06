@@ -200,6 +200,8 @@ namespace HexDemo
             State.slow = 0;
             State.frozen = 0;
             State.strength = 0;
+            State.temporaryStrengthUntilEndOfTurn = 0;
+            State.temporaryStrengthUntilEndOfBattle = 0;
             State.toughness = 0;
             State.enemyTurnIndex = 0;
             State.enemyLastWarcryTurn = -99;
@@ -243,7 +245,6 @@ namespace HexDemo
             State.consumableEggTartTurns = 0;
             State.flyingSecretTurns = 0;
             State.stealSecretTurns = 0;
-            State.consumableTempStrength = 0;
             State.consumableTempToughness = 0;
             State.firstAttackBonusPending = false;
             State.weaponSkillFree = false;
@@ -294,12 +295,11 @@ namespace HexDemo
             State.warriorGainStrengthOnFearPlayed = false;
             State.warriorArmorOnFearAdded = false;
             State.warriorHealOnBleedGain = false;
-            State.warriorWindstepReady = false;
+            State.warriorWindstepStrengthPerMoveThisTurn = 0;
             State.warriorFirstAttackKnockback = false;
             State.warriorOpeningReach = false;
             State.warriorLightGear = false;
             State.warriorFearEcho = false;
-            State.warriorWindstepUsedThisTurn = false;
             State.warriorFirstAttackCardUsedThisTurn = false;
             State.warriorLightGearUsedThisTurn = false;
             State.warriorFearEchoUsedThisTurn = false;
@@ -425,7 +425,6 @@ namespace HexDemo
             State.warriorFocusFinisherUsedThisTurn = false;
             State.warriorBleedEventsThisTurn = 0;
             State.warriorExtraFearUsedThisTurn = false;
-            State.warriorWindstepUsedThisTurn = false;
             State.warriorFirstAttackCardUsedThisTurn = false;
             State.warriorLightGearUsedThisTurn = false;
             State.warriorFearEchoUsedThisTurn = false;
@@ -485,11 +484,8 @@ namespace HexDemo
                 State.bind = Mathf.Max(0, State.bind - 1);
             if (State.phaseMovement > 0)
                 State.phaseMovement = Mathf.Max(0, State.phaseMovement - 1);
-            if (State.consumableTempStrength > 0)
-            {
-                State.strength = Mathf.Max(0, State.strength - State.consumableTempStrength);
-                State.consumableTempStrength = 0;
-            }
+            ClearTemporaryStrength(HexTemporaryStrengthDuration.UntilEndOfTurn);
+            State.warriorWindstepStrengthPerMoveThisTurn = 0;
             if (State.consumableTempToughness > 0)
             {
                 State.toughness = Mathf.Max(0, State.toughness - State.consumableTempToughness);
@@ -1057,6 +1053,59 @@ namespace HexDemo
             transform.position = grid.AxialToWorld(State.coord) + Vector3.up * unitYOffset;
             SyncLivingWallView();
             RefreshHealthBar();
+        }
+
+        public int GainTemporaryStrength(int amount, HexTemporaryStrengthDuration duration)
+        {
+            int applied = Mathf.Max(0, amount);
+            if (applied <= 0 || !IsAlive || !CanReceivePositiveStatus())
+                return 0;
+            if (duration != HexTemporaryStrengthDuration.UntilEndOfTurn &&
+                duration != HexTemporaryStrengthDuration.UntilEndOfBattle)
+                throw new System.ArgumentOutOfRangeException(nameof(duration), duration, null);
+
+            State.strength += applied;
+            switch (duration)
+            {
+                case HexTemporaryStrengthDuration.UntilEndOfTurn:
+                    State.temporaryStrengthUntilEndOfTurn += applied;
+                    break;
+                case HexTemporaryStrengthDuration.UntilEndOfBattle:
+                    State.temporaryStrengthUntilEndOfBattle += applied;
+                    break;
+            }
+
+            if (State.gainMoveOnStrengthOrToughness)
+                State.currentMovePoints += applied;
+            RefreshHealthBar();
+            return applied;
+        }
+
+        public void ClearTemporaryStrength(HexTemporaryStrengthDuration duration)
+        {
+            int amount;
+            switch (duration)
+            {
+                case HexTemporaryStrengthDuration.UntilEndOfTurn:
+                    amount = State.temporaryStrengthUntilEndOfTurn;
+                    State.temporaryStrengthUntilEndOfTurn = 0;
+                    break;
+                case HexTemporaryStrengthDuration.UntilEndOfBattle:
+                    amount = State.temporaryStrengthUntilEndOfBattle;
+                    State.temporaryStrengthUntilEndOfBattle = 0;
+                    break;
+                default:
+                    throw new System.ArgumentOutOfRangeException(nameof(duration), duration, null);
+            }
+
+            State.strength = Mathf.Max(0, State.strength - Mathf.Max(0, amount));
+            RefreshHealthBar();
+        }
+
+        public void ClearAllTemporaryStrength()
+        {
+            ClearTemporaryStrength(HexTemporaryStrengthDuration.UntilEndOfTurn);
+            ClearTemporaryStrength(HexTemporaryStrengthDuration.UntilEndOfBattle);
         }
 
         public void RefreshLabel()

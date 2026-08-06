@@ -564,7 +564,7 @@ namespace HexDemo
             if (!SubmitAuthoritativeCommand(HexNetworkCommandType.MoveUnit, ToPayload(tile.coord)))
                 return;
 
-            StartCoroutine(MoveUnitRoutine(_playerUnit, path, moveCost));
+            StartCoroutine(MoveUnitRoutine(_playerUnit, path, moveCost, HexMovementCause.Active));
         }
 
         private bool TryHandleEnemyHandClick()
@@ -1344,7 +1344,9 @@ namespace HexDemo
                 yield break;
 
             target.FaceTarget(grid.AxialToWorld(movement.actualDestination));
-            yield return target.MoveAlongPath(grid, movement.path, unitYOffset, moveSpeed * 1.2f, 0.01f, coord => OnUnitEnteredTile(target, coord));
+            yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
+            if (!target.IsAlive)
+                yield break;
             ApplyForcedMovementCollisionEffects(source, target, movement);
             target.RefreshLabel();
             _ui.Refresh();
@@ -1360,7 +1362,9 @@ namespace HexDemo
                 yield break;
 
             target.FaceTarget(grid.AxialToWorld(movement.actualDestination));
-            yield return target.MoveAlongPath(grid, movement.path, unitYOffset, moveSpeed * 1.2f, 0.01f, coord => OnUnitEnteredTile(target, coord));
+            yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
+            if (!target.IsAlive)
+                yield break;
             ApplyForcedMovementCollisionEffects(source, target, movement);
             target.RefreshLabel();
             _ui.Refresh();
@@ -1370,6 +1374,7 @@ namespace HexDemo
             HexBattleUnit unit,
             List<HexAxialCoord> path,
             int moveCost,
+            HexMovementCause cause,
             HexAxialCoord? towardTargetCoord = null)
         {
             if (IsLivingWallMovementPathBlocked(path, unit))
@@ -1416,7 +1421,7 @@ namespace HexDemo
             }
 
             unit.SpendMovePoints(moveCost);
-            HandlePostMovementPassives(unit, path, towardTargetCoord, movedDistance);
+            HandlePostMovement(unit, path, cause, towardTargetCoord, movedDistance);
             if (!unit.IsAlive)
             {
                 yield return ResolveDeathsAndBattleEndRoutine();
@@ -1554,7 +1559,7 @@ namespace HexDemo
                 var pull = ResolveForcedMovement(tentacles[i], _playerUnit, 1, true);
                 if (pull == null || pull.path.Count <= 1)
                     continue;
-                yield return MoveUnitRoutine(_playerUnit, pull.path, 0);
+                yield return MoveUnitRoutine(_playerUnit, pull.path, 0, HexMovementCause.Forced);
                 successfulPulls++;
             }
         }
@@ -1988,7 +1993,7 @@ namespace HexDemo
                     {
                         int takeCount = Mathf.Min(path.Count, maxSteps + 1);
                         var trimmed = path.Take(takeCount).ToList();
-                        yield return MoveUnitRoutine(enemy, trimmed, 0, primaryTarget.State.coord);
+                        yield return MoveUnitRoutine(enemy, trimmed, 0, HexMovementCause.Active, primaryTarget.State.coord);
                         if (HexAxialCoord.Distance(enemy.State.coord, primaryTarget.State.coord) <= 1)
                             yield return ResolveDirectAttackRoutine(enemy, primaryTarget, 6);
                         resolved = true;
@@ -2134,7 +2139,7 @@ namespace HexDemo
                         {
                             var pull = ResolveForcedMovement(enemy, target, 1, true);
                             if (pull != null && pull.path.Count > 1)
-                                yield return MoveUnitRoutine(target, pull.path, 0);
+                                yield return MoveUnitRoutine(target, pull.path, 0, HexMovementCause.Forced);
                         }
                     }
                     break;
@@ -2272,7 +2277,7 @@ namespace HexDemo
             }
 
             if (path.Count > 1)
-                yield return MoveUnitRoutine(enemy, path, 0, target.State.coord);
+                yield return MoveUnitRoutine(enemy, path, 0, HexMovementCause.Active, target.State.coord);
 
             if (HexAxialCoord.Distance(enemy.State.coord, target.State.coord) <= 1)
                 yield return ResolveDirectAttackRoutine(enemy, target, damage);
@@ -2300,7 +2305,7 @@ namespace HexDemo
             }
 
             if (movementPath.Count > 1)
-                yield return MoveUnitRoutine(enemy, movementPath, 0, target.State.coord);
+                yield return MoveUnitRoutine(enemy, movementPath, 0, HexMovementCause.Active, target.State.coord);
 
             bool empowered = enemy.State.orcChargeEmpowered;
             int damage = empowered
@@ -2442,7 +2447,7 @@ namespace HexDemo
 
             int maxSteps = Mathf.Min(enemy.State.currentMovePoints, bestPath.Count - 1);
             var trimmed = bestPath.Take(maxSteps + 1).ToList();
-            yield return MoveUnitRoutine(enemy, trimmed, trimmed.Count - 1, _playerUnit != null ? (HexAxialCoord?)_playerUnit.State.coord : null);
+            yield return MoveUnitRoutine(enemy, trimmed, trimmed.Count - 1, HexMovementCause.Active, _playerUnit != null ? (HexAxialCoord?)_playerUnit.State.coord : null);
         }
 
         private IEnumerator HandleBattleEnd(bool playerWon)
@@ -2454,6 +2459,8 @@ namespace HexDemo
             _lastBattlePlayerWon = playerWon;
             _busy = true;
             yield return new WaitForSeconds(0.25f);
+            for (int i = 0; i < _units.Count; i++)
+                _units[i]?.ClearAllTemporaryStrength();
             _ui.Refresh();
             int goldReward = playerWon && awardVictoryGold ? victoryGoldAmount : 0;
             GameEvent.Send(HexGameEvents.BattleFinished, playerWon, goldReward, _playerUnit);
@@ -2913,7 +2920,7 @@ namespace HexDemo
                     yield break;
                 }
                 case "warrior_windstep_ready":
-                    source.State.warriorWindstepReady = true;
+                    source.State.warriorWindstepStrengthPerMoveThisTurn += card.EffectiveAmount;
                     yield break;
                 case "warrior_opening_stagger":
                     source.State.warriorFirstAttackKnockback = true;
@@ -3062,7 +3069,7 @@ namespace HexDemo
             var path = new List<HexAxialCoord> { source.State.coord, destination };
             if (IsLivingWallMovementPathBlocked(path, source))
                 yield break;
-            yield return MoveUnitRoutine(source, path, 0);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active);
         }
 
         private void PlaceTemporaryObstaclesAround(HexBattleUnit source, int count, int lifespanTurns)
@@ -3229,7 +3236,7 @@ namespace HexDemo
             if (path.Count - 1 > maxSteps)
                 path = path.Take(maxSteps + 1).ToList();
 
-            yield return MoveUnitRoutine(source, path, 0, target.State.coord);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, target.State.coord);
         }
 
         private IEnumerator KnockbackAdjacentEnemiesRoutine(HexBattleUnit source, int distance)
@@ -3538,7 +3545,7 @@ namespace HexDemo
             bool empowered = HasAnyFearIntent();
             var movement = ResolveForcedMovement(source, target, empowered ? 3 : 1, false);
             if (movement != null && movement.path.Count > 1)
-                yield return MoveUnitRoutine(target, movement.path, 0);
+                yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
             if (movement != null && movement.collided)
                 ApplyDamageToUnit(target, 50, source);
         }
@@ -3579,11 +3586,10 @@ namespace HexDemo
                     break;
                 case "move":
                     source.State.warriorMoveEventThisTurn = true;
-                    if (source.State.warriorWindstepReady && !source.State.warriorWindstepUsedThisTurn)
-                    {
-                        source.State.warriorWindstepUsedThisTurn = true;
-                        source.GainStrength(2);
-                    }
+                    if (source.State.warriorWindstepStrengthPerMoveThisTurn > 0)
+                        source.GainTemporaryStrength(
+                            source.State.warriorWindstepStrengthPerMoveThisTurn,
+                            HexTemporaryStrengthDuration.UntilEndOfTurn);
                     if (source.State.warriorLightGear && !source.State.warriorLightGearUsedThisTurn)
                     {
                         source.State.warriorLightGearUsedThisTurn = true;
@@ -4280,7 +4286,7 @@ namespace HexDemo
 
             var path = FindBestApproachPath(source, target.State.coord, 1);
             if (path != null && path.Count >= 2)
-                yield return MoveUnitRoutine(source, path, 0, target.State.coord);
+                yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, target.State.coord);
 
             if (!source.IsAlive || !target.IsAlive)
                 yield break;
@@ -4306,7 +4312,7 @@ namespace HexDemo
                     hitEnemies.Add(enemy);
             }
 
-            yield return MoveUnitRoutine(source, path, 0, aimedCoord);
+            yield return MoveUnitRoutine(source, path, 0, HexMovementCause.Active, aimedCoord);
 
             if (!source.IsAlive || _battleFinished)
                 yield break;
@@ -4604,19 +4610,26 @@ namespace HexDemo
             }
         }
 
-        private void HandlePostMovementPassives(HexBattleUnit unit, IReadOnlyList<HexAxialCoord> path, HexAxialCoord? towardTargetCoord, int movedDistance)
+        private void HandlePostMovement(
+            HexBattleUnit unit,
+            IReadOnlyList<HexAxialCoord> path,
+            HexMovementCause cause,
+            HexAxialCoord? towardTargetCoord,
+            int movedDistance)
         {
             ResolveConsumableMovementTriggers(unit, path);
             if (unit == null || !unit.IsAlive)
                 return;
-            if (unit?.State != null && unit.State.profession == HexCardProfession.Warrior && movedDistance > 0)
+            if (cause != HexMovementCause.Active || movedDistance <= 0)
+                return;
+            if (unit.State != null && unit.State.profession == HexCardProfession.Warrior)
             {
                 MarkWarriorEvent(unit, "move");
                 if (unit.State.warriorSkirmishArmorOnMove)
                     GainArmorWithFeedback(unit, 2);
             }
 
-            if (!IsDruid(unit) || path == null || path.Count < 2 || movedDistance <= 0)
+            if (!IsDruid(unit) || path == null || path.Count < 2)
                 return;
 
             if (towardTargetCoord.HasValue &&
@@ -4844,7 +4857,7 @@ namespace HexDemo
             if (path == null || path.Count < 2)
                 yield break;
 
-            yield return MoveUnitRoutine(unit, path, 0);
+            yield return MoveUnitRoutine(unit, path, 0, HexMovementCause.Active);
         }
 
         private List<HexAxialCoord> BuildCardMovementPath(HexBattleUnit unit, HexAxialCoord destination, int maxSteps)
@@ -4886,7 +4899,7 @@ namespace HexDemo
             if (path == null || path.Count < 2)
                 yield break;
 
-            yield return MoveUnitRoutine(enemy, path, 0, target.State.coord);
+            yield return MoveUnitRoutine(enemy, path, 0, HexMovementCause.Active, target.State.coord);
         }
 
         private List<HexAxialCoord> FindBestIdealRangeMovePath(
@@ -5022,7 +5035,7 @@ namespace HexDemo
             }
 
             if (bestPath != null)
-                yield return MoveUnitRoutine(unit, bestPath, 0, threat.State.coord);
+                yield return MoveUnitRoutine(unit, bestPath, 0, HexMovementCause.Active, threat.State.coord);
         }
 
         private void ApplyBurnToAdjacentEnemies(HexBattleUnit source, int amount)
@@ -5194,7 +5207,7 @@ namespace HexDemo
                     totalThornsDamage += Mathf.Max(0, target.State.thorns);
                     var push = ResolveForcedMovement(source, target, 1, false);
                     if (push != null && push.path.Count > 1)
-                        yield return MoveUnitRoutine(target, push.path, 0);
+                        yield return MoveUnitRoutine(target, push.path, 0, HexMovementCause.Forced);
                 }
             }
 
@@ -5374,7 +5387,9 @@ namespace HexDemo
                     unit.Heal(Mathf.Max(1, amount));
                     break;
                 case HexTerrainPickupType.TemporaryStrength:
-                    unit.GainStrength(Mathf.Max(1, amount));
+                    unit.GainTemporaryStrength(
+                        Mathf.Max(1, amount),
+                        HexTemporaryStrengthDuration.UntilEndOfBattle);
                     break;
                 case HexTerrainPickupType.TemporaryCard:
                     AddGeneratedCardToHand(unit, HexCardLibrary.GetTemporaryThrowingAxe());
@@ -5805,7 +5820,7 @@ namespace HexDemo
                 {
                     int maxSteps = Mathf.Min(totalMove, path.Count - 1);
                     var trimmed = path.Take(maxSteps + 1).ToList();
-                    yield return MoveUnitRoutine(unit, trimmed, maxSteps, unit.State.allureSourceCoord);
+                    yield return MoveUnitRoutine(unit, trimmed, maxSteps, HexMovementCause.Forced, unit.State.allureSourceCoord);
                 }
             }
 

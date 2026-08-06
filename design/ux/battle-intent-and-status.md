@@ -41,7 +41,8 @@
 
 | 设计 ID | 代码字段 | 中文 | 类型 |
 |---------|----------|------|------|
-| 力量 | `strength` | 力量 | 增益 |
+| 力量 | `strength - temporaryStrengthUntilEndOfTurn - temporaryStrengthUntilEndOfBattle` | 力量（永久部分） | 增益 |
+| 临时力量 | `temporaryStrengthUntilEndOfTurn`、`temporaryStrengthUntilEndOfBattle` | 临时力量（总量） | 增益 |
 | 格挡 | `block` | 格挡 | 增益 |
 | 稳固 | `toughness` | 稳固 | 增益 |
 | 吸血 | `vampirism` | 吸血 | 增益 |
@@ -52,6 +53,8 @@
 | 眩晕 | `stun` | 眩晕 | 减益（敌人） |
 
 > **恐惧**：为敌方抽牌堆 token，非单位状态 debuff，不在 StatusIconBar 显示。
+>
+> 顶部力量数值继续显示攻击实际使用的总力量。状态栏中的“力量”只显示永久部分；“临时力量”显示两类临时值之和，Tooltip 分别列出“回合末移除”与“战斗末移除”的数值。
 
 ### 2.1 Tooltip 模板
 

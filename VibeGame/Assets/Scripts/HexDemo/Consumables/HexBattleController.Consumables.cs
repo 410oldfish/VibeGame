@@ -176,8 +176,9 @@ namespace HexDemo
             switch (definition.effectType)
             {
                 case HexConsumableEffectType.Strength:
-                    _playerUnit.GainStrength(definition.amount);
-                    _playerUnit.State.consumableTempStrength += definition.amount;
+                    _playerUnit.GainTemporaryStrength(
+                        definition.amount,
+                        HexTemporaryStrengthDuration.UntilEndOfTurn);
                     return true;
                 case HexConsumableEffectType.Toughness:
                     _playerUnit.GainToughness(definition.amount);
@@ -392,8 +393,7 @@ namespace HexDemo
 
             if (_strengthRitualTiles.ContainsKey(unit.State.coord))
             {
-                unit.GainStrength(3);
-                unit.State.consumableTempStrength += 3;
+                unit.GainTemporaryStrength(3, HexTemporaryStrengthDuration.UntilEndOfTurn);
             }
 
             if (unit == _playerUnit)

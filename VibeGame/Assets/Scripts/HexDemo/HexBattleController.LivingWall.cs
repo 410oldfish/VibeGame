@@ -247,7 +247,7 @@ namespace HexDemo
                     continue;
                 }
 
-                yield return MoveUnitRoutine(target, movement.path, 0);
+                yield return MoveUnitRoutine(target, movement.path, 0, HexMovementCause.Forced);
                 if (target.IsAlive && !target.State.coord.Equals(movement.actualDestination))
                 {
                     blocked = true;
@@ -261,7 +261,12 @@ namespace HexDemo
                 yield break;
             }
 
-            yield return MoveUnitRoutine(wall, new List<HexAxialCoord> { wall.State.coord, destinationCore }, 0, directionTarget.State.coord);
+            yield return MoveUnitRoutine(
+                wall,
+                new List<HexAxialCoord> { wall.State.coord, destinationCore },
+                0,
+                HexMovementCause.Active,
+                directionTarget.State.coord);
         }
 
         private void ApplyLivingWallSqueeze(HexBattleUnit target, HexBattleUnit wall)
