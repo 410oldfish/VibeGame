@@ -109,7 +109,7 @@ namespace HexDemo
         private void Refresh()
         {
             if (_toolkitView != null && _playerUnit != null)
-                _toolkitView.Refresh(_usedCampfire, healAmount, _playerUnit.State.currentHealth, _playerUnit.State.maxHealth);
+                _toolkitView.Refresh(_usedCampfire, GetHealAmount(), _playerUnit.State.currentHealth, _playerUnit.State.maxHealth);
             if (_statusLabel == null || _playerUnit == null)
                 return;
 

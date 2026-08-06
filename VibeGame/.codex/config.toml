@@ -1,0 +1,25 @@
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 4
+
+[agents.environment_agent]
+description = "Read-only Unity MCP connectivity checker used before project work."
+config_file = "agents/environment_agent.toml"
+
+[agents.game_designer]
+description = "Game and UX designer for player-facing requirements, GDDs, rules, scope, and acceptance criteria."
+config_file = "agents/game_designer.toml"
+
+[agents.unity_developer]
+description = "Senior Unity developer and single writer for assigned C# code, UI, scenes, prefabs, assets, integration, and focused verification."
+config_file = "agents/unity_developer.toml"
+
+[agents.technical_reviewer]
+description = "Independent read-only Unity architecture, code, asset, integration, and readiness reviewer."
+config_file = "agents/technical_reviewer.toml"
+
+[agents.test_engineer]
+description = "Independent Unity test engineer for proportional compile, automated, integration, regression, and manual validation."
+config_file = "agents/test_engineer.toml"

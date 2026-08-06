@@ -785,7 +785,6 @@ namespace HexDemo
 
             var restController = roomRoot.AddComponent<HexRestController>();
             restController.campfireObject = campfire;
-            restController.healAmount = 10;
             restController.Initialize(playerUnit, _sceneCamera);
             restController.RestFinished += (_, unit) =>
             {

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-06T13:42:13.466Z",
+  "sessionId": "019fd746-d1de-7b41-8391-edb8d522872e",
+  "turnId": "019fd74b-9f37-7001-a076-282f85555bd3",
+  "cwd": "F:\\VibeGame\\VibeGame",
+  "root": {
+    "name": "manager-agent",
+    "available": true,
+    "usage": {
+      "inputTokens": 1570887,
+      "cachedInputTokens": 1508608,
+      "outputTokens": 12172,
+      "reasoningOutputTokens": 3428,
+      "totalTokens": 1583059
+    },
+    "method": "transcript-offset-delta"
+  },
+  "agents": [],
+  "total": {
+    "inputTokens": 1570887,
+    "cachedInputTokens": 1508608,
+    "outputTokens": 12172,
+    "reasoningOutputTokens": 3428,
+    "totalTokens": 1583059
+  },
+  "incompleteAgentCount": 0,
+  "warnings": []
+}
