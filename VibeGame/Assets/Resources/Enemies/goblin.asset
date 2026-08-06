@@ -15,14 +15,14 @@ MonoBehaviour:
   id: goblin
   displayName: "\u54E5\u5E03\u6797"
   encounterType: 0
-  intentPattern: 1
+  intentPattern: 0
   attackMinRange: 1
   attackMaxRange: 1
   emptyDrawPileStrengthGain: 0
   maxSummons: 0
   summonHealth: 0
   phaseTwoHealthRatio: 0
-  intentSlots: 0000000001000000
+  intentSlots: 0100000000000000
   deckCardIds:
   - enemy_goblin_strike
   - enemy_goblin_strike

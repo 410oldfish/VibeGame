@@ -1605,7 +1605,7 @@ namespace HexDemo
             switch (id)
             {
                 case "goblin":
-                    return CreateEnemyDefinition(id, "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.ApproachStrike, 1, 1, 0, null, CreateGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
+                    return CreateEnemyDefinition(id, "哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Fixed, 1, 1, 0, null, CreateGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Move);
                 case "spear_goblin":
                     return CreateEnemyDefinition(id, "投矛哥布林", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Ranged, 2, 3, 1, SpearGoblinBottom, CreateSpearGoblinDeck(), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "goblin_captain":
@@ -1613,7 +1613,7 @@ namespace HexDemo
                 case "tribal_chieftain":
                     return CreateEnemyDefinition(id, "部落酋长", HexEnemyEncounterType.Boss, HexEnemyIntentPattern.ApproachStrike, 1, 1, 2, ChieftainBottom, CreateChieftainPhaseOneDeck(), 0, 0, 0.5f, CreateChieftainPhaseTwoDeck(), HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Free, HexEnemyIntentSlotKind.Free);
                 case "skeleton":
-                    return CreateEnemyDefinition(id, "骷髅兵", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Stationary, 1, 1, 0, null, Repeat((SkeletonStrike, 4), (SkeletonShamble, 3), (SkeletonShield, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack);
+                    return CreateEnemyDefinition(id, "骷髅兵", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.Fixed, 1, 1, 0, null, Repeat((SkeletonStrike, 4), (SkeletonShamble, 3), (SkeletonShield, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Move);
                 case "orc_warrior":
                     return CreateEnemyDefinition(id, "兽人战士", HexEnemyEncounterType.Normal, HexEnemyIntentPattern.LineCharge, 1, 3, 0, OrcBottom, Repeat((OrcCharge, 4), (OrcHeavySlash, 3), (OrcApproach, 2), (OrcStance, 1)), 0, 0, 0f, null, HexEnemyIntentSlotKind.Move, HexEnemyIntentSlotKind.Attack);
                 case "parasitic_vine":

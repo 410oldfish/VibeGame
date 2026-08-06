@@ -63,12 +63,59 @@ namespace HexDemo.EditorTests
             var goblin = HexCardLibrary.GetEnemyDefinition("goblin");
             var skeleton = HexCardLibrary.GetEnemyDefinition("skeleton");
 
+            Assert.That(goblin.intentPattern, Is.EqualTo(HexEnemyIntentPattern.Fixed));
+            Assert.That(goblin.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Move }));
             Assert.That(goblin.bottomCard, Is.Null);
             Assert.That(goblin.emptyDrawPileStrengthGain, Is.Zero);
             Assert.That(skeleton.displayName, Is.EqualTo("骷髅兵"));
+            Assert.That(skeleton.intentPattern, Is.EqualTo(HexEnemyIntentPattern.Fixed));
             Assert.That(skeleton.bottomCard, Is.Null);
             Assert.That(skeleton.deckDefinitions, Has.Count.EqualTo(8));
-            Assert.That(skeleton.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Attack }));
+            Assert.That(skeleton.intentSlots, Is.EqualTo(new[] { HexEnemyIntentSlotKind.Attack, HexEnemyIntentSlotKind.Move }));
+        }
+
+        [Test]
+        public void TieredEnemyIntentSlots_DatabaseAndFallbackStayInSync()
+        {
+            MethodInfo fallbackFactory = typeof(HexCardLibrary).GetMethod(
+                "CreateBuiltInEnemyDefinition",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(fallbackFactory, Is.Not.Null);
+
+            AssertDatabaseAndFallback(
+                fallbackFactory,
+                "goblin",
+                HexEnemyIntentPattern.Fixed,
+                9,
+                HexEnemyIntentSlotKind.Attack,
+                HexEnemyIntentSlotKind.Move);
+            AssertDatabaseAndFallback(
+                fallbackFactory,
+                "skeleton",
+                HexEnemyIntentPattern.Fixed,
+                8,
+                HexEnemyIntentSlotKind.Attack,
+                HexEnemyIntentSlotKind.Move);
+            AssertDatabaseAndFallback(
+                fallbackFactory,
+                "orc_warrior",
+                HexEnemyIntentPattern.LineCharge,
+                10,
+                HexEnemyIntentSlotKind.Move,
+                HexEnemyIntentSlotKind.Attack);
+        }
+
+        [Test]
+        public void BonePileSummonContract_UsesSkeletonDefinitionId()
+        {
+            var bonePile = HexPropLibrary.Get("bone_pile");
+            Assert.That(bonePile, Is.Not.Null);
+            Assert.That(
+                bonePile.onRemoveEffects.Any(effect =>
+                    effect.type == HexPropOnRemoveType.SpawnUnit &&
+                    effect.payloadId == "skeleton" &&
+                    effect.amount == 1),
+                Is.True);
         }
 
         [Test]
@@ -91,6 +138,26 @@ namespace HexDemo.EditorTests
             Assert.That(GetCount(counts, "enemy_orc_stance"), Is.EqualTo(1));
             Assert.That(HexCardLibrary.GetCardById("enemy_orc_charge").amount, Is.EqualTo(8));
             Assert.That(HexCardLibrary.GetCardById("enemy_orc_heavy_slash").amount, Is.EqualTo(7));
+        }
+
+        private static void AssertDatabaseAndFallback(
+            MethodInfo fallbackFactory,
+            string id,
+            HexEnemyIntentPattern expectedPattern,
+            int expectedDeckCount,
+            params HexEnemyIntentSlotKind[] expectedSlots)
+        {
+            var databaseDefinition = HexCardLibrary.GetEnemyDefinition(id);
+            var fallbackDefinition = fallbackFactory.Invoke(null, new object[] { id }) as HexEnemyDefinition;
+
+            Assert.That(databaseDefinition, Is.Not.Null, id);
+            Assert.That(fallbackDefinition, Is.Not.Null, id);
+            Assert.That(databaseDefinition.intentPattern, Is.EqualTo(expectedPattern), id);
+            Assert.That(fallbackDefinition.intentPattern, Is.EqualTo(expectedPattern), id);
+            Assert.That(databaseDefinition.intentSlots, Is.EqualTo(expectedSlots), id);
+            Assert.That(fallbackDefinition.intentSlots, Is.EqualTo(expectedSlots), id);
+            Assert.That(databaseDefinition.deckDefinitions, Has.Count.EqualTo(expectedDeckCount), id);
+            Assert.That(fallbackDefinition.deckDefinitions, Has.Count.EqualTo(expectedDeckCount), id);
         }
 
         [Test]

@@ -15,14 +15,14 @@ MonoBehaviour:
   id: skeleton
   displayName: "\u9AB7\u9AC5\u5175"
   encounterType: 0
-  intentPattern: 3
+  intentPattern: 0
   attackMinRange: 1
   attackMaxRange: 1
   emptyDrawPileStrengthGain: 0
   maxSummons: 0
   summonHealth: 0
   phaseTwoHealthRatio: 0
-  intentSlots: 01000000
+  intentSlots: 0100000000000000
   deckCardIds:
   - enemy_skeleton_strike
   - enemy_skeleton_strike

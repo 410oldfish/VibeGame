@@ -364,6 +364,12 @@ namespace HexDemo
                     ? $"对向墙：{pair.State.displayName}"
                     : "无配对墙：改以玩家为目标";
             }
+
+            var orderedSlots = GetEnemyIntentExecutionOrder(enemy);
+            string orderHint = BuildMoveAttackOrderHint(
+                orderedSlots,
+                definition.intentPattern != HexEnemyIntentPattern.ApproachStrike &&
+                definition.intentPattern != HexEnemyIntentPattern.Ranged);
             if (definition.intentPattern == HexEnemyIntentPattern.LineCharge &&
                 slots.Any(slot => slot?.card?.definition?.id == "enemy_orc_charge"))
             {
@@ -375,19 +381,44 @@ namespace HexDemo
                     int knockback = enemy.State.orcChargeEmpowered
                         ? HexOrcWarriorRules.EmpoweredKnockback
                         : HexOrcWarriorRules.BaseKnockback;
-                    return $"直线冲锋：{damage}伤，击退{knockback}至 {knockbackDestination}";
+                    return JoinIntentHints(
+                        orderHint,
+                        $"直线冲锋：{damage}伤，击退{knockback}至 {knockbackDestination}");
                 }
 
-                return "直线冲锋无合法命中：执行时改为逼近1格";
+                return JoinIntentHints(orderHint, "直线冲锋无合法命中：执行时改为逼近1格");
             }
 
-            var target = GetPrimaryEnemyTarget(enemy);
-            bool targetInRange = target != null && IsInEnemyAttackRange(enemy, target, definition);
-            bool attackFirst = targetInRange;
-            if (definition.intentPattern == HexEnemyIntentPattern.Ranged && !targetInRange)
-                attackFirst = false;
+            return orderHint;
+        }
 
-            return attackFirst ? "若保持当前距离：先攻后移" : "若保持当前距离：先移后攻";
+        private static string BuildMoveAttackOrderHint(
+            IReadOnlyList<HexEnemyIntentSlot> orderedSlots,
+            bool fixedOrder)
+        {
+            if (orderedSlots == null)
+                return string.Empty;
+
+            int attackIndex = -1;
+            int moveIndex = -1;
+            for (int i = 0; i < orderedSlots.Count; i++)
+            {
+                if (orderedSlots[i]?.slotKind == HexEnemyIntentSlotKind.Attack && attackIndex < 0)
+                    attackIndex = i;
+                else if (orderedSlots[i]?.slotKind == HexEnemyIntentSlotKind.Move && moveIndex < 0)
+                    moveIndex = i;
+            }
+
+            if (attackIndex < 0 || moveIndex < 0)
+                return string.Empty;
+
+            string sequence = attackIndex < moveIndex ? "先攻后移" : "先移后攻";
+            return fixedOrder ? $"固定顺序：{sequence}" : $"若保持当前距离：{sequence}";
+        }
+
+        private static string JoinIntentHints(string orderHint, string detail)
+        {
+            return string.IsNullOrWhiteSpace(orderHint) ? detail : $"{orderHint}；{detail}";
         }
 
         public string GetStatusSummary()

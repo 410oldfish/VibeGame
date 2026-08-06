@@ -65,6 +65,100 @@ namespace HexDemo.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator TieredEnemies_UseConfiguredIntentOrderAndInvalidAttackStillMoves()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_OrcWarrior");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            Component goblin = units.Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "goblin");
+            Component skeleton = units.Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "skeleton");
+            Component orc = units.Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "orc_warrior");
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            object goblinState = GetState(goblin);
+            object skeletonState = GetState(skeleton);
+            object orcState = GetState(orc);
+
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(playerState, "armor", 0);
+            SetField(goblinState, "coord", Activator.CreateInstance(coordType, 6, 5));
+            SetField(skeletonState, "coord", Activator.CreateInstance(coordType, 1, 1));
+            SetField(orcState, "coord", Activator.CreateInstance(coordType, 8, 5));
+
+            IList goblinOrder = DrawAndGetIntentExecutionOrder(controllerType, controller, goblin);
+            AssertIntentOrder(goblinOrder, "Attack", "Move");
+            Assert.That(InvokeInstance(controllerType, controller, "BuildIntentOrderHint", goblin), Is.EqualTo("固定顺序：先攻后移"));
+
+            SetField(goblinState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            AssertIntentOrder(GetIntentExecutionOrder(controllerType, controller, goblin), "Attack", "Move");
+            SetField(goblinState, "coord", Activator.CreateInstance(coordType, 6, 5));
+
+            IList skeletonOrder = DrawAndGetIntentExecutionOrder(controllerType, controller, skeleton);
+            AssertIntentOrder(skeletonOrder, "Attack", "Move");
+            SetField(skeletonState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            AssertIntentOrder(GetIntentExecutionOrder(controllerType, controller, skeleton), "Attack", "Move");
+
+            IList orcOrder = DrawAndGetIntentExecutionOrder(controllerType, controller, orc);
+            AssertIntentOrder(orcOrder, "Move", "Attack");
+            string orcHint = InvokeInstance(controllerType, controller, "BuildIntentOrderHint", orc) as string;
+            Assert.That(orcHint, Does.StartWith("固定顺序：先移后攻"));
+
+            SetField(skeletonState, "coord", Activator.CreateInstance(coordType, 1, 1));
+            SetField(orcState, "coord", Activator.CreateInstance(coordType, 8, 5));
+            int healthBefore = (int)GetField(playerState, "currentHealth");
+            yield return RunEnemyIntentCard(controllerType, controller, goblin, GetField(goblinOrder[0], "card"));
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(healthBefore));
+            yield return RunEnemyIntentCard(controllerType, controller, goblin, GetField(goblinOrder[1], "card"));
+            Assert.That(GetCoord(GetField(goblinState, "coord"), "q"), Is.EqualTo(5));
+            Assert.That(GetCoord(GetField(goblinState, "coord"), "r"), Is.EqualTo(5));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator SummonedSkeleton_UsesTierOneDualIntentDefinition()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_OrcWarrior");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            Component source = GetUnits(scene)
+                .Single(component => (string)GetField(GetState(component), "enemyDefinitionId") == "orc_warrior");
+
+            object summonedResult = InvokeInstance(
+                controllerType,
+                controller,
+                "TrySummonEnemy",
+                source,
+                "skeleton",
+                10,
+                4);
+            Assert.That(summonedResult, Is.EqualTo(true));
+
+            Component summonedSkeleton = GetUnits(scene)
+                .Single(component =>
+                    (bool)GetField(GetState(component), "isSummonedEnemy") &&
+                    (string)GetField(GetState(component), "enemyDefinitionId") == "skeleton");
+            AssertIntentOrder(
+                DrawAndGetIntentExecutionOrder(controllerType, controller, summonedSkeleton),
+                "Attack",
+                "Move");
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
         public IEnumerator OrcWarriorCharge_ConsumesEmpowermentOnlyOnSuccessfulHit()
         {
             Scene scene = BuildScenario("Debug/BattleSandbox_OrcWarrior");
@@ -770,6 +864,44 @@ namespace HexDemo.PlayModeTests
             yield return controller.StartCoroutine(routine);
         }
 
+        private static IEnumerator RunEnemyIntentCard(
+            Type controllerType,
+            MonoBehaviour controller,
+            Component enemy,
+            object card)
+        {
+            MethodInfo method = controllerType.GetMethod("ResolveEnemyIntentCard", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var routine = method.Invoke(controller, new[] { (object)enemy, card }) as IEnumerator;
+            Assert.That(routine, Is.Not.Null);
+            yield return controller.StartCoroutine(routine);
+        }
+
+        private static IList DrawAndGetIntentExecutionOrder(
+            Type controllerType,
+            MonoBehaviour controller,
+            Component enemy)
+        {
+            InvokeInstance(controllerType, controller, "DrawEnemyIntentCards", enemy);
+            return GetIntentExecutionOrder(controllerType, controller, enemy);
+        }
+
+        private static IList GetIntentExecutionOrder(
+            Type controllerType,
+            MonoBehaviour controller,
+            Component enemy)
+        {
+            return InvokeInstance(controllerType, controller, "GetEnemyIntentExecutionOrder", enemy) as IList;
+        }
+
+        private static void AssertIntentOrder(IList slots, params string[] expectedKinds)
+        {
+            Assert.That(slots, Is.Not.Null);
+            Assert.That(slots.Count, Is.EqualTo(expectedKinds.Length));
+            for (int i = 0; i < expectedKinds.Length; i++)
+                Assert.That(GetField(slots[i], "slotKind").ToString(), Is.EqualTo(expectedKinds[i]));
+        }
+
         private static IEnumerator RunLivingWallTurnStarts(Type controllerType, MonoBehaviour controller)
         {
             MethodInfo method = controllerType.GetMethod("ResolveLivingWallTurnStarts", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -852,6 +984,17 @@ namespace HexDemo.PlayModeTests
             MethodInfo method = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public);
             Assert.That(method, Is.Not.Null);
             return method.Invoke(null, arguments);
+        }
+
+        private static object InvokeInstance(
+            Type type,
+            object target,
+            string methodName,
+            params object[] arguments)
+        {
+            MethodInfo method = type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, methodName);
+            return method.Invoke(target, arguments);
         }
 
         private static Type RequireType(string fullName)
