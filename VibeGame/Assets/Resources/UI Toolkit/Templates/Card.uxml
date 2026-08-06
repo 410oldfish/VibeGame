@@ -1,0 +1,1 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements"><ui:VisualElement name="card" class="hex-card"><ui:Label name="cost" class="hex-card__cost"/><ui:Label name="name" class="hex-card__name"/><ui:Label name="description" class="hex-card__description"/></ui:VisualElement></ui:UXML>

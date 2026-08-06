@@ -17,6 +17,7 @@ namespace HexDemo
         private bool _usedCampfire;
         private HexGrid _grid;
         private bool _updateRegistered;
+        private HexRestToolkitView _toolkitView;
 
         public System.Action<bool, HexBattleUnit> RestFinished;
 
@@ -25,7 +26,7 @@ namespace HexDemo
             _playerUnit = playerUnit;
             rayCamera = battleCamera != null ? battleCamera : Camera.main;
             _grid = Object.FindFirstObjectByType<HexGrid>();
-            BuildCanvas();
+            BuildToolkitView();
             RegisterUpdate();
             Refresh();
         }
@@ -91,8 +92,22 @@ namespace HexDemo
             leaveText.text = "Leave Rest";
         }
 
+        private void BuildToolkitView()
+        {
+            var host = new GameObject("RestToolkitUI");
+            host.transform.SetParent(transform, false);
+            _toolkitView = host.AddComponent<HexRestToolkitView>();
+            _toolkitView.Initialize(() =>
+            {
+                GameEvent.Send(HexGameEvents.RestFinished, true, _playerUnit);
+                RestFinished?.Invoke(true, _playerUnit);
+            });
+        }
+
         private void Refresh()
         {
+            if (_toolkitView != null && _playerUnit != null)
+                _toolkitView.Refresh(_usedCampfire, healAmount, _playerUnit.State.currentHealth, _playerUnit.State.maxHealth);
             if (_statusLabel == null || _playerUnit == null)
                 return;
 

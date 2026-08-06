@@ -1,0 +1,6 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="project://database/Assets/Resources/UI%20Toolkit/Styles/HexTheme.uss" />
+    <ui:VisualElement name="rest-root" class="hex-screen hex-ignore">
+        <ui:VisualElement name="rest-panel" class="hex-panel hex-rest-panel" />
+    </ui:VisualElement>
+</ui:UXML>

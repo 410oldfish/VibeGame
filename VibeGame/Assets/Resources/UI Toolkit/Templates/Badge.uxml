@@ -1,0 +1,1 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements"><ui:Label name="badge" class="hex-badge"/></ui:UXML>

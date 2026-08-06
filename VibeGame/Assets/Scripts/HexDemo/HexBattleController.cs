@@ -40,7 +40,7 @@ namespace HexDemo
         private HexBattleUnit _playerUnit;
         private readonly List<HexBattleUnit> _enemyUnits = new();
         private HexBattleFaction _currentTurn = HexBattleFaction.Player;
-        private HexBattleUI _ui;
+        private IBattleHudView _ui;
         private HexTile _hoveredTile;
         private bool _hoverHasColliderHit;
         private HexCardInstance _draggedCard;
@@ -87,9 +87,9 @@ namespace HexDemo
                 }
             }
 
-            var uiGO = new GameObject("HexBattleUI_Root");
+            var uiGO = new GameObject("HexBattleToolkitUI_Root");
             uiGO.transform.SetParent(transform, false);
-            _ui = uiGO.AddComponent<HexBattleUI>();
+            _ui = uiGO.AddComponent<HexBattleToolkitUI>();
             _ui.Initialize(this);
             EnsureTargetArrow();
             RegisterUpdate();
@@ -201,7 +201,7 @@ namespace HexDemo
             if (_targetArrow != null)
                 Destroy(_targetArrow.gameObject);
             if (_ui != null)
-                Destroy(_ui.gameObject);
+                Destroy(_ui.Host);
         }
 
         private void Tick()
@@ -543,6 +543,17 @@ namespace HexDemo
             ClearRangeHighlights();
             _ui.Refresh();
             return played;
+        }
+
+        public void CancelCardDrag()
+        {
+            if (_draggedCard == null)
+                return;
+
+            SetTargetArrowActive(false);
+            _draggedCard = null;
+            ClearRangeHighlights();
+            _ui?.Refresh();
         }
 
         private void TryHandlePlayerMoveClick()

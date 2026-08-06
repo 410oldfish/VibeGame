@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="project://database/Assets/Resources/UI%20Toolkit/Styles/HexTheme.uss" />
+    <ui:VisualElement name="battle-root" class="hex-screen hex-ignore">
+        <ui:VisualElement name="top-bar" class="hex-topbar hex-panel" />
+        <ui:VisualElement name="enemy-list" class="hex-enemies hex-ignore" />
+        <ui:VisualElement name="action-bar" class="hex-actions" />
+        <ui:VisualElement name="hand" class="hex-hand hex-ignore" />
+        <ui:VisualElement name="feedback-layer" class="hex-screen hex-ignore" />
+        <ui:VisualElement name="modal-layer" class="hex-screen hex-ignore" />
+    </ui:VisualElement>
+</ui:UXML>

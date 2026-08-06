@@ -1,0 +1,8 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="project://database/Assets/Resources/UI%20Toolkit/Styles/HexTheme.uss" />
+    <ui:VisualElement name="adventure-root" class="hex-screen">
+        <ui:VisualElement name="map-toolbar" class="hex-map-toolbar hex-panel" />
+        <ui:VisualElement name="map-viewport" class="hex-map-canvas" />
+        <ui:VisualElement name="overlay-layer" class="hex-screen hex-ignore" />
+    </ui:VisualElement>
+</ui:UXML>

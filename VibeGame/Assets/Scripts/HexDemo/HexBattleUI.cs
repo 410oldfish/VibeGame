@@ -92,7 +92,7 @@ namespace HexDemo
         }
     }
 
-    public sealed partial class HexBattleUI : MonoBehaviour
+    public sealed partial class HexBattleUI : MonoBehaviour, IBattleHudView
     {
         private const string BattleHudCanvasPrefabPath = "Assets/Prefabs/UI/Battle/BattleHudCanvas.prefab";
         private const string BattlePanelDir = "Assets/Prefabs/UI/Battle/Panels/";
@@ -151,6 +151,7 @@ namespace HexDemo
         private const float CardHeight = 240f;
 
         public Canvas Canvas => _canvas;
+        public GameObject Host => gameObject;
 
         public void Initialize(HexBattleController controller)
         {

@@ -48,6 +48,7 @@ namespace HexDemo
         private bool _isDraggingMap;
         private Vector2 _lastMapPointerPosition;
         private bool _updateRegistered;
+        private IAdventureView _toolkitView;
 
         public static void TryBootstrap()
         {
@@ -75,6 +76,18 @@ namespace HexDemo
         private void OnDestroy()
         {
             UnregisterUpdate();
+        }
+
+        private IAdventureView EnsureToolkitView()
+        {
+            if (_toolkitView != null)
+                return _toolkitView;
+
+            var host = new GameObject("AdventureToolkitUI");
+            host.transform.SetParent(transform, false);
+            _toolkitView = host.AddComponent<HexAdventureToolkitView>();
+            _toolkitView.Initialize();
+            return _toolkitView;
         }
 
         public void StartNewRun()
@@ -122,6 +135,19 @@ namespace HexDemo
                 Destroy(_mapCanvas.gameObject);
             CleanupProfessionSelection();
 
+            EnsureToolkitView().ShowProfessionSelection(GetNetworkStatusText(), ChooseProfession);
+            if (_sceneCamera != null)
+            {
+                _sceneCamera.orthographic = true;
+                _sceneCamera.transform.position = new Vector3(0f, 0f, -10f);
+                _sceneCamera.transform.rotation = Quaternion.identity;
+                _sceneCamera.orthographicSize = 5.5f;
+                _sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+                _sceneCamera.backgroundColor = new Color(0.12f, 0.13f, 0.17f, 1f);
+            }
+            return;
+
+#pragma warning disable CS0162
             if (TryBuildProfessionSelectionFromPrefab(out var background, out var title, out var subtitle, out var networkLabel, out var gridRoot))
             {
                 title.alignment = TextAlignmentOptions.Center;
@@ -196,6 +222,7 @@ namespace HexDemo
                 _sceneCamera.clearFlags = CameraClearFlags.SolidColor;
                 _sceneCamera.backgroundColor = new Color(0.12f, 0.13f, 0.17f, 1f);
             }
+#pragma warning restore CS0162
         }
 
         private void CreateProfessionCard(Transform parent, HexCardProfession profession, string title, string description, Color color)
@@ -264,6 +291,7 @@ namespace HexDemo
 
         private void CleanupProfessionSelection()
         {
+            _toolkitView?.HideProfessionSelection();
             if (_professionCanvas == null)
                 return;
 
@@ -273,6 +301,10 @@ namespace HexDemo
 
         private void BuildMapCanvas()
         {
+            EnsureToolkitView().BuildMap(_mapData, BuildRunSummary(), _currentNodeId, _visitedNodeIds, TryEnterNode);
+            return;
+
+#pragma warning disable CS0162
             if (TryBuildMapCanvasFromPrefab())
             {
                 BuildMapEdges();
@@ -313,6 +345,7 @@ namespace HexDemo
             UpdateMapPanBounds();
             ApplyMapPan();
             RefreshMapState();
+#pragma warning restore CS0162
         }
 
         private void BuildMapEdges()
@@ -356,6 +389,12 @@ namespace HexDemo
 
         private void RefreshMapState()
         {
+            if (_toolkitView != null)
+            {
+                _toolkitView.RefreshMap(BuildRunSummary(), _mapData, _currentNodeId, _visitedNodeIds);
+                return;
+            }
+
             if (_runSummaryLabel != null)
                 _runSummaryLabel.text = $"{GetProfessionDisplayName(_runState.profession)}\nHP {_runState.currentHealth}/{_runState.maxHealth}\nGold {_runState.gold}\nDeck {_runState.deckDefinitions.Count}\nItems {_runState.consumables.Count}/{HexConsumableLibrary.GetSlotCount(_runState.profession)}";
 
@@ -390,6 +429,8 @@ namespace HexDemo
         private void ShowMap()
         {
             CleanupRoom();
+            if (_toolkitView != null)
+                _toolkitView.ShowMap();
             if (_mapCanvas != null)
                 _mapCanvas.gameObject.SetActive(true);
 
@@ -419,6 +460,8 @@ namespace HexDemo
                 return;
 
             _pendingRoomNodeId = nodeId;
+            if (_toolkitView != null && (targetNode.nodeType == HexMapNodeType.SmallBattle || targetNode.nodeType == HexMapNodeType.EliteBattle || targetNode.nodeType == HexMapNodeType.Boss || targetNode.nodeType == HexMapNodeType.Rest))
+                _toolkitView.HideMapForRoom();
             if (_mapCanvas != null && (targetNode.nodeType == HexMapNodeType.SmallBattle || targetNode.nodeType == HexMapNodeType.EliteBattle || targetNode.nodeType == HexMapNodeType.Boss || targetNode.nodeType == HexMapNodeType.Rest))
                 _mapCanvas.gameObject.SetActive(false);
 
@@ -762,6 +805,20 @@ namespace HexDemo
                 offers.Add((card, price));
             }
 
+            if (_toolkitView != null)
+            {
+                var views = offers.Select(offer => new HexShopOfferView { card = offer.card, price = offer.price }).ToList();
+                _toolkitView.ShowShop(views, index =>
+                {
+                    if (index < 0 || index >= offers.Count || _runState.gold < offers[index].price)
+                        return false;
+                    _runState.gold -= offers[index].price;
+                    _runState.deckDefinitions.Add(offers[index].card);
+                    return true;
+                }, () => _runState.gold, CompleteRoomAndReturnToMap);
+                return;
+            }
+
             BuildOverlay("Shop", overlay =>
             {
                 var summary = CreateText(overlay.transform, "ShopSummary", new Vector2(42f, -86f), new Vector2(600f, 40f), 24f, FontStyles.Bold);
@@ -856,6 +913,17 @@ namespace HexDemo
 
         private void ShowEvent()
         {
+            if (_toolkitView != null)
+            {
+                _toolkitView.ShowOverlay("事件", "路边一座奇怪的神龛提供了三种选择。", new List<HexUiChoice>
+                {
+                    new() { title = "获得 15 金币", action = () => { _runState.gold += 15; CompleteRoomAndReturnToMap(); } },
+                    new() { title = "恢复 5 点生命", action = () => { _runState.currentHealth = Mathf.Min(_runState.maxHealth, _runState.currentHealth + 5); CompleteRoomAndReturnToMap(); } },
+                    new() { title = "获得随机卡牌", action = () => { _runState.deckDefinitions.Add(HexCardLibrary.GetRandomRewardCard(_runState.profession)); CompleteRoomAndReturnToMap(); } },
+                });
+                return;
+            }
+
             BuildOverlay("Event", overlay =>
             {
                 var body = CreateText(overlay.transform, "Body", new Vector2(54f, -92f), new Vector2(760f, 120f), 26f, FontStyles.Normal);
@@ -883,6 +951,23 @@ namespace HexDemo
         {
             CleanupRoom();
             var rewards = HexCardLibrary.GetRewardChoices(3, _runState.profession);
+            if (_toolkitView != null)
+            {
+                var choices = new List<HexUiChoice>();
+                for (int i = 0; i < rewards.Count; i++)
+                {
+                    var reward = rewards[i];
+                    choices.Add(new HexUiChoice
+                    {
+                        title = $"[{reward.energyCost}] {reward.displayName}",
+                        body = reward.description,
+                        action = () => { _runState.deckDefinitions.Add(reward); ShowConsumableReward(); },
+                    });
+                }
+                _toolkitView.ShowOverlay("胜利", $"战斗胜利，获得 {goldReward} 金币。选择一张卡牌。", choices);
+                return;
+            }
+
             BuildOverlay("Victory", overlay =>
             {
                 var body = CreateText(overlay.transform, "Body", new Vector2(48f, -92f), new Vector2(760f, 88f), 26f, FontStyles.Normal);
@@ -972,6 +1057,29 @@ namespace HexDemo
             if (reward == null)
             {
                 CompleteRoomAndReturnToMap();
+                return;
+            }
+
+            if (_toolkitView != null)
+            {
+                int capacity = HexConsumableLibrary.GetSlotCount(_runState.profession);
+                var choices = new List<HexUiChoice>();
+                if (_runState.consumables.Count < capacity)
+                {
+                    choices.Add(new HexUiChoice { title = "拾取", action = () => { _runState.consumables.Add(new HexConsumableInstance(reward)); CompleteRoomAndReturnToMap(); } });
+                }
+                else
+                {
+                    for (int i = 0; i < _runState.consumables.Count; i++)
+                    {
+                        int index = i;
+                        string existingName = _runState.consumables[i]?.Definition?.displayName ?? "未知道具";
+                        choices.Add(new HexUiChoice { title = $"丢弃 {existingName} 并替换", action = () => { _runState.consumables[index] = new HexConsumableInstance(reward); CompleteRoomAndReturnToMap(); } });
+                    }
+                }
+                choices.Add(new HexUiChoice { title = "刷新道具", action = () => ShowConsumableReward(reward.id) });
+                choices.Add(new HexUiChoice { title = "放弃道具", action = CompleteRoomAndReturnToMap });
+                _toolkitView.ShowOverlay("道具掉落", $"{reward.displayName}\n{reward.category} · 可使用 {reward.maxUses} 次\n{reward.description}", choices);
                 return;
             }
 
@@ -1098,6 +1206,15 @@ namespace HexDemo
 
         private void ShowSimpleOverlay(string title, string body, string buttonText, UnityEngine.Events.UnityAction callback)
         {
+            if (_toolkitView != null)
+            {
+                _toolkitView.ShowOverlay(title, body, new List<HexUiChoice>
+                {
+                    new() { title = buttonText, action = () => callback?.Invoke() },
+                });
+                return;
+            }
+
             BuildOverlay(title, overlay =>
             {
                 var bodyText = CreateText(overlay.transform, "Body", new Vector2(56f, -110f), new Vector2(700f, 120f), 28f, FontStyles.Normal);
@@ -1397,7 +1514,8 @@ namespace HexDemo
         {
             CleanupRoom();
             CleanupOverlay();
-            _overlayRoot.gameObject.SetActive(false);
+            if (_overlayRoot != null)
+                _overlayRoot.gameObject.SetActive(false);
             if (!string.IsNullOrEmpty(_pendingRoomNodeId))
             {
                 _currentNodeId = _pendingRoomNodeId;
@@ -1416,6 +1534,7 @@ namespace HexDemo
 
         private void CleanupOverlay()
         {
+            _toolkitView?.ClearOverlay();
             if (_overlayRoot == null)
                 return;
 
@@ -1444,8 +1563,18 @@ namespace HexDemo
             };
         }
 
+        private string BuildRunSummary()
+        {
+            if (_runState == null)
+                return string.Empty;
+            return $"{GetProfessionDisplayName(_runState.profession)}   生命 {_runState.currentHealth}/{_runState.maxHealth}   金币 {_runState.gold}   牌组 {_runState.deckDefinitions.Count}   道具 {_runState.consumables.Count}/{HexConsumableLibrary.GetSlotCount(_runState.profession)}";
+        }
+
         private void UpdateMapPanInput()
         {
+            if (_toolkitView != null)
+                return;
+
             if (_mapCanvas == null || !_mapCanvas.gameObject.activeInHierarchy || _overlayRoot == null || _overlayRoot.gameObject.activeSelf || _mapRoot == null)
                 return;
 

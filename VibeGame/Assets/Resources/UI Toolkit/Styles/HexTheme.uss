@@ -1,0 +1,44 @@
+:root {
+    --hex-bg: rgb(18, 21, 28);
+    --hex-panel: rgba(31, 37, 48, 0.96);
+    --hex-panel-soft: rgba(45, 52, 66, 0.92);
+    --hex-line: rgb(91, 104, 126);
+    --hex-text: rgb(242, 244, 248);
+    --hex-muted: rgb(177, 186, 203);
+    --hex-accent: rgb(225, 169, 68);
+    --hex-danger: rgb(220, 76, 67);
+    --hex-good: rgb(77, 184, 111);
+}
+
+.hex-screen { position: absolute; left: 0; right: 0; top: 0; bottom: 0; color: var(--hex-text); font-size: 18px; }
+.hex-ignore { -unity-picking-mode: ignore; }
+.hex-panel { background-color: var(--hex-panel); border-left-width: 1px; border-right-width: 1px; border-top-width: 1px; border-bottom-width: 1px; border-left-color: var(--hex-line); border-right-color: var(--hex-line); border-top-color: var(--hex-line); border-bottom-color: var(--hex-line); border-radius: 8px; padding: 12px; }
+.hex-row { flex-direction: row; align-items: center; }
+.hex-grow { flex-grow: 1; }
+.hex-title { font-size: 28px; -unity-font-style: bold; color: var(--hex-accent); }
+.hex-subtitle { font-size: 20px; -unity-font-style: bold; }
+.hex-muted { color: var(--hex-muted); }
+.hex-button { min-height: 44px; min-width: 108px; margin: 4px; font-size: 18px; background-color: rgb(56, 66, 84); color: var(--hex-text); border-radius: 6px; }
+.hex-button:hover { background-color: rgb(72, 84, 105); }
+.hex-button:disabled { opacity: 0.42; }
+.hex-card { width: 172px; height: 226px; margin: 5px; padding: 10px; background-color: rgb(48, 56, 70); border-radius: 9px; border-left-width: 2px; border-right-width: 2px; border-top-width: 2px; border-bottom-width: 2px; border-left-color: var(--hex-line); border-right-color: var(--hex-line); border-top-color: var(--hex-line); border-bottom-color: var(--hex-line); }
+.hex-card--disabled { opacity: 0.48; }
+.hex-card__name { font-size: 20px; -unity-font-style: bold; white-space: normal; }
+.hex-card__cost { font-size: 24px; -unity-font-style: bold; color: var(--hex-accent); }
+.hex-card__description { flex-grow: 1; white-space: normal; }
+.hex-badge { margin: 3px; padding: 5px 8px; background-color: var(--hex-panel-soft); border-radius: 10px; }
+.hex-hand { position: absolute; left: 4%; right: 4%; bottom: 12px; height: 248px; flex-direction: row; justify-content: center; align-items: flex-end; }
+.hex-topbar { position: absolute; left: 16px; right: 16px; top: 12px; min-height: 72px; flex-direction: row; align-items: center; }
+.hex-enemies { position: absolute; right: 16px; top: 96px; width: 390px; max-height: 490px; }
+.hex-actions { position: absolute; right: 18px; bottom: 278px; flex-direction: row; }
+.hex-modal-mask { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.58); }
+.hex-modal { width: 720px; max-width: 88%; max-height: 78%; }
+.hex-modal__content { max-height: 520px; margin-top: 10px; }
+.hex-feedback { position: absolute; font-size: 30px; -unity-font-style: bold; color: white; }
+.hex-map-toolbar { position: absolute; left: 18px; right: 18px; top: 16px; flex-direction: row; }
+.hex-map-canvas { position: absolute; left: 0; right: 0; top: 80px; bottom: 0; overflow: hidden; }
+.hex-map-node { position: absolute; width: 112px; height: 64px; border-radius: 12px; background-color: rgb(55, 65, 84); color: white; font-size: 18px; }
+.hex-map-node--current { background-color: rgb(150, 104, 38); }
+.hex-map-node--visited { opacity: 0.55; }
+.hex-choice-list { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+.hex-rest-panel { position: absolute; left: 20px; top: 20px; width: 420px; min-height: 180px; }
