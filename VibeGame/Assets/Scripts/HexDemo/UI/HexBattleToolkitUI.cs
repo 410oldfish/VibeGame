@@ -17,16 +17,21 @@ namespace HexDemo
             internal readonly Label cost;
             internal readonly Label title;
             internal readonly Label description;
+            internal readonly WarriorCardVisualElement warriorCard;
             internal HexCardInstance card;
             internal int pointerId = -1;
             internal bool playable;
 
-            internal CardElement(VisualElement root)
+            internal CardElement(VisualElement root, WarriorCardVisualElement warriorCard = null)
             {
                 this.root = root;
-                cost = root.Q<Label>("cost");
-                title = root.Q<Label>("name");
-                description = root.Q<Label>("description");
+                this.warriorCard = warriorCard;
+                if (warriorCard == null)
+                {
+                    cost = root.Q<Label>("cost");
+                    title = root.Q<Label>("name");
+                    description = root.Q<Label>("description");
+                }
             }
         }
 
@@ -55,12 +60,14 @@ namespace HexDemo
         private int _playerStatusHash = int.MinValue;
         private int _enemyHash = int.MinValue;
         private int _consumableHash = int.MinValue;
+        private HexCardUiLayoutSettings _cardLayout;
 
         public GameObject Host => gameObject;
 
         public void Initialize(HexBattleController controller)
         {
             _controller = controller;
+            _cardLayout = Resources.Load<HexCardUiLayoutSettings>("UI Toolkit/CardArt/WarriorCardLayout");
             _document = HexUiToolkitRuntime.AttachDocument(gameObject, "BattleRoot", 100);
             BuildOrQueryTree();
             RegisterCallbacks();
@@ -133,7 +140,7 @@ namespace HexDemo
             _consumables.AddToClassList("hex-row");
             _consumables.style.position = Position.Absolute;
             _consumables.style.left = 18;
-            _consumables.style.bottom = 278;
+            _consumables.style.bottom = 300;
             screen.Add(_consumables);
         }
 
@@ -275,6 +282,7 @@ namespace HexDemo
         private void RefreshHand(IReadOnlyList<HexCardInstance> hand)
         {
             var live = new HashSet<string>();
+            float warriorCardWidth = CalculateHandCardWidth(hand.Count);
             for (int i = 0; i < hand.Count; i++)
             {
                 var card = hand[i];
@@ -285,6 +293,11 @@ namespace HexDemo
                 {
                     view = CreateCardElement(card);
                     _cards.Add(card.runtimeId, view);
+                }
+                if (view.warriorCard != null)
+                {
+                    view.warriorCard.SetCardSize(warriorCardWidth);
+                    view.warriorCard.ApplyLayout(_cardLayout, 0.5f);
                 }
                 BindCard(view, card);
                 _hand.Add(view.root);
@@ -299,6 +312,17 @@ namespace HexDemo
 
         private CardElement CreateCardElement(HexCardInstance card)
         {
+            if (card.definition?.profession == HexCardProfession.Warrior && _cardLayout != null)
+            {
+                var warriorCard = new WarriorCardVisualElement("warrior-card-hand");
+                warriorCard.AddToClassList("warrior-card--hand");
+                warriorCard.SetGuidesVisible(false);
+                warriorCard.pickingMode = PickingMode.Position;
+                var warriorView = new CardElement(warriorCard, warriorCard) { card = card };
+                RegisterCardPointerCallbacks(warriorView);
+                return warriorView;
+            }
+
             var asset = HexUiToolkitRuntime.LoadTemplate("Card");
             var root = asset != null ? asset.Instantiate().Q<VisualElement>("card") : null;
             if (root == null)
@@ -311,25 +335,52 @@ namespace HexDemo
             }
             root.pickingMode = PickingMode.Position;
             var view = new CardElement(root) { card = card };
+            RegisterCardPointerCallbacks(view);
+            return view;
+        }
+
+        private void RegisterCardPointerCallbacks(CardElement view)
+        {
+            VisualElement root = view.root;
             root.RegisterCallback<PointerDownEvent>(evt => BeginCardPointer(view, evt));
             root.RegisterCallback<PointerMoveEvent>(evt => MoveCardPointer(view, evt));
             root.RegisterCallback<PointerUpEvent>(evt => EndCardPointer(view, evt));
             root.RegisterCallback<PointerCaptureOutEvent>(_ => CancelCardPointer(view));
-            return view;
         }
 
         private void BindCard(CardElement view, HexCardInstance card)
         {
             view.card = card;
             int cost = _controller.GetLocalCardCost(card);
-            view.cost.text = cost.ToString();
-            view.title.text = card.definition?.displayName ?? "未知卡牌";
-            view.description.text = card.definition?.description ?? string.Empty;
-            view.root.style.backgroundColor = card.definition != null ? Color.Lerp(card.definition.color, new Color(0.1f, 0.12f, 0.16f), 0.35f) : new Color(0.2f, 0.22f, 0.27f);
+            string title = card.definition?.displayName ?? "未知卡牌";
+            string description = card.definition?.description ?? string.Empty;
+            if (view.warriorCard != null)
+            {
+                view.warriorCard.SetContent(cost.ToString(), title, description);
+                view.root.style.backgroundColor = Color.clear;
+            }
+            else
+            {
+                view.cost.text = cost.ToString();
+                view.title.text = title;
+                view.description.text = description;
+                view.root.style.backgroundColor = card.definition != null ? Color.Lerp(card.definition.color, new Color(0.1f, 0.12f, 0.16f), 0.35f) : new Color(0.2f, 0.22f, 0.27f);
+            }
             bool playable = card.definition != null && !card.definition.isUnplayable && _controller.GetLocalPlayerState()?.energy >= cost;
             view.playable = playable;
             view.root.EnableInClassList("hex-card--disabled", !playable);
             view.root.tooltip = playable ? card.definition.description : "当前不可打出";
+        }
+
+        private static float CalculateHandCardWidth(int cardCount)
+        {
+            if (cardCount <= 0)
+                return 190f;
+
+            const float availableWidth = 1760f;
+            const float cardSpacing = 8f;
+            float width = (availableWidth - cardSpacing * Mathf.Max(0, cardCount - 1)) / cardCount;
+            return Mathf.Clamp(width, 150f, 190f);
         }
 
         private void BeginCardPointer(CardElement view, PointerDownEvent evt)

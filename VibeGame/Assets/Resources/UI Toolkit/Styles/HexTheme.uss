@@ -26,13 +26,27 @@
 .hex-card__name { font-size: 20px; -unity-font-style: bold; white-space: normal; }
 .hex-card__cost { font-size: 24px; -unity-font-style: bold; color: var(--hex-accent); }
 .hex-card__description { flex-grow: 1; white-space: normal; }
+.warrior-card { position: relative; flex-shrink: 0; -unity-background-scale-mode: stretch-to-fill; }
+.warrior-card__region { position: absolute; padding: 2px; white-space: normal; overflow: hidden; -unity-text-align: middle-center; }
+.warrior-card__cost { color: white; -unity-font-style: bold; -unity-text-outline-color: rgb(39, 23, 12); -unity-text-outline-width: 2px; }
+.warrior-card__title { color: rgb(255, 231, 179); -unity-font-style: bold; white-space: nowrap; text-overflow: ellipsis; -unity-text-overflow-position: end; -unity-text-outline-color: rgb(33, 15, 11); -unity-text-outline-width: 1px; }
+.warrior-card__description { color: rgb(55, 37, 22); -unity-font-style: bold; }
+.warrior-card--guides .warrior-card__region { border-left-width: 1px; border-right-width: 1px; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgba(60, 210, 255, 0.85); border-right-color: rgba(60, 210, 255, 0.85); border-top-color: rgba(60, 210, 255, 0.85); border-bottom-color: rgba(60, 210, 255, 0.85); background-color: rgba(60, 210, 255, 0.08); }
+.warrior-card--hand { margin-left: 4px; margin-right: 4px; margin-top: 4px; margin-bottom: 4px; }
+.hex-card-choice { width: 226px; height: 334px; margin: 8px; padding: 6px; align-items: center; justify-content: flex-start; background-color: rgba(35, 40, 49, 0.88); border-radius: 8px; }
+.hex-card-choice:hover { background-color: rgba(65, 73, 88, 0.96); }
+.hex-card-choice:disabled { opacity: 0.45; }
+.hex-card-choice__caption { height: 34px; margin-top: 4px; font-size: 18px; -unity-font-style: bold; color: var(--hex-accent); -unity-text-align: middle-center; }
+.hex-card-choice-scroll { height: 372px; min-height: 372px; margin-top: 6px; }
+.hex-card-choice-row { min-width: 100%; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: center; }
 .hex-badge { margin: 3px; padding: 5px 8px; background-color: var(--hex-panel-soft); border-radius: 10px; }
-.hex-hand { position: absolute; left: 4%; right: 4%; bottom: 12px; height: 248px; flex-direction: row; justify-content: center; align-items: flex-end; }
+.hex-hand { position: absolute; left: 4%; right: 4%; bottom: 12px; height: 270px; flex-direction: row; justify-content: center; align-items: flex-end; }
 .hex-topbar { position: absolute; left: 16px; right: 16px; top: 12px; min-height: 72px; flex-direction: row; align-items: center; }
 .hex-enemies { position: absolute; right: 16px; top: 96px; width: 390px; max-height: 490px; }
-.hex-actions { position: absolute; right: 18px; bottom: 278px; flex-direction: row; }
+.hex-actions { position: absolute; right: 18px; bottom: 300px; flex-direction: row; }
 .hex-modal-mask { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.58); }
 .hex-modal { width: 720px; max-width: 88%; max-height: 78%; }
+.hex-modal--cards { width: 880px; max-width: 94%; }
 .hex-modal__content { max-height: 520px; margin-top: 10px; }
 .hex-feedback { position: absolute; font-size: 30px; -unity-font-style: bold; color: white; }
 .hex-map-toolbar { position: absolute; left: 18px; right: 18px; top: 16px; flex-direction: row; }

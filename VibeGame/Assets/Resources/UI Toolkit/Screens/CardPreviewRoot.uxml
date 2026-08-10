@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="card-test-root" class="hex-screen card-test-root">
+        <ui:VisualElement class="card-test-header">
+            <ui:Label text="战士卡牌 UI 位置调整与显示测试" class="hex-title" />
+            <ui:Label text="Play 后从右侧切换卡牌或调整区域；保存布局资产可保留位置。" class="hex-muted card-test-header__hint" />
+        </ui:VisualElement>
+        <ui:VisualElement class="card-test-body">
+            <ui:VisualElement class="card-test-stage">
+                <ui:VisualElement name="card-mount" class="card-test-card-mount" />
+                <ui:Label text="虚线框仅用于定位测试，不会出现在正式卡牌中。" class="hex-muted card-test-stage__hint" />
+            </ui:VisualElement>
+            <ui:ScrollView name="controls" class="hex-panel card-test-controls" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

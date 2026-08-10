@@ -9,6 +9,8 @@ namespace HexDemo
     {
         internal string title;
         internal string body;
+        internal HexCardDefinition card;
+        internal string cardCaption;
         internal bool enabled = true;
         internal Action action;
     }
@@ -210,16 +212,42 @@ namespace HexDemo
             _overlayLayer.pickingMode = PickingMode.Position;
             var mask = NewOverlay("adventure-modal");
             var panel = NewPanel(mask);
+            bool hasCardChoices = ContainsCardChoices(choices);
+            if (hasCardChoices)
+                panel.AddToClassList("hex-modal--cards");
             panel.Add(NewLabel(title, "hex-title"));
             if (!string.IsNullOrWhiteSpace(body))
                 panel.Add(NewLabel(body, "hex-muted"));
-            var choiceRoot = new VisualElement();
-            choiceRoot.AddToClassList("hex-choice-list");
+            VisualElement choiceRoot;
+            if (hasCardChoices)
+            {
+                var cardScroll = new ScrollView(ScrollViewMode.Horizontal)
+                {
+                    name = "card-choice-scroll",
+                    horizontalScrollerVisibility = ScrollerVisibility.Auto,
+                    verticalScrollerVisibility = ScrollerVisibility.Hidden,
+                };
+                cardScroll.AddToClassList("hex-card-choice-scroll");
+                cardScroll.contentContainer.AddToClassList("hex-card-choice-row");
+                choiceRoot = cardScroll;
+            }
+            else
+            {
+                choiceRoot = new VisualElement();
+                choiceRoot.AddToClassList("hex-choice-list");
+            }
             if (choices != null)
             {
                 for (int i = 0; i < choices.Count; i++)
                 {
                     var choice = choices[i];
+                    if (choice.card != null && choice.card.profession == HexCardProfession.Warrior)
+                    {
+                        var cardButton = CreateCardChoiceButton(choice);
+                        choiceRoot.Add(cardButton);
+                        continue;
+                    }
+
                     var button = new Button(() => choice.action?.Invoke()) { text = string.IsNullOrWhiteSpace(choice.body) ? choice.title : $"{choice.title}\n{choice.body}" };
                     button.AddToClassList("hex-button");
                     button.style.width = 250;
@@ -229,6 +257,20 @@ namespace HexDemo
                 }
             }
             panel.Add(choiceRoot);
+        }
+
+        private static bool ContainsCardChoices(IReadOnlyList<HexUiChoice> choices)
+        {
+            if (choices == null)
+                return false;
+
+            for (int i = 0; i < choices.Count; i++)
+            {
+                if (choices[i]?.card != null)
+                    return true;
+            }
+
+            return false;
         }
 
         public void ShowShop(IReadOnlyList<HexShopOfferView> offers, Func<int, bool> purchase, Func<int> getGold, Action leave)
@@ -244,6 +286,8 @@ namespace HexDemo
                     {
                         title = $"[{offer.card.energyCost}] {offer.card.displayName} — {offer.price} 金币",
                         body = offer.card.description,
+                        card = offer.card,
+                        cardCaption = $"{offer.price} 金币",
                         enabled = getGold() >= offer.price,
                         action = () =>
                         {
@@ -256,6 +300,29 @@ namespace HexDemo
                 ShowOverlay("商店", $"金币 {getGold()}", choices);
             }
             Render();
+        }
+
+        private static Button CreateCardChoiceButton(HexUiChoice choice)
+        {
+            var button = new Button(() => choice.action?.Invoke()) { text = string.Empty };
+            button.AddToClassList("hex-card-choice");
+            button.SetEnabled(choice.enabled);
+
+            var layout = Resources.Load<HexCardUiLayoutSettings>("UI Toolkit/CardArt/WarriorCardLayout");
+            var card = new WarriorCardVisualElement("warrior-card-choice");
+            card.SetCardSize(210f);
+            card.ApplyLayout(layout, 0.55f);
+            card.SetContent(
+                choice.card.energyCost < 0 ? "X" : choice.card.energyCost.ToString(),
+                choice.card.displayName,
+                choice.card.description);
+            card.SetGuidesVisible(false);
+            button.Add(card);
+
+            var caption = new Label(string.IsNullOrWhiteSpace(choice.cardCaption) ? "选择" : choice.cardCaption);
+            caption.AddToClassList("hex-card-choice__caption");
+            button.Add(caption);
+            return button;
         }
 
         public void ClearOverlay()

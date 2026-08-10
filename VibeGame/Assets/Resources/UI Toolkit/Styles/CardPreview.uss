@@ -1,0 +1,178 @@
+.card-test-root {
+    background-color: rgb(18, 20, 25);
+}
+
+.card-test-header {
+    height: 86px;
+    min-height: 86px;
+    padding-left: 28px;
+    padding-right: 28px;
+    flex-direction: row;
+    align-items: center;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(77, 84, 96);
+    background-color: rgb(27, 31, 39);
+}
+
+.card-test-header__hint {
+    margin-left: 24px;
+    white-space: normal;
+}
+
+.card-test-body {
+    flex-grow: 1;
+    flex-direction: row;
+    padding: 20px;
+}
+
+.card-test-stage {
+    flex-grow: 1;
+    min-width: 520px;
+    align-items: center;
+    justify-content: center;
+    background-color: rgb(12, 14, 18);
+    border-radius: 10px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgb(55, 62, 74);
+    border-right-color: rgb(55, 62, 74);
+    border-top-color: rgb(55, 62, 74);
+    border-bottom-color: rgb(55, 62, 74);
+}
+
+.card-test-card-mount {
+    min-height: 560px;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-test-stage__hint {
+    margin-top: 8px;
+    margin-bottom: 14px;
+}
+
+.card-test-controls {
+    width: 520px;
+    min-width: 420px;
+    margin-left: 20px;
+    padding: 18px;
+}
+
+.card-test-controls > .unity-base-field,
+.card-test-controls > .unity-slider {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.card-test-controls .unity-base-field__input,
+.card-test-controls .unity-text-field__input,
+.card-test-controls .unity-popup-field__input {
+    background-color: rgb(42, 48, 59);
+    color: rgb(240, 242, 247);
+}
+
+.card-test-controls .unity-base-field__label {
+    color: rgb(226, 230, 238);
+}
+
+.card-test-section-title {
+    margin-top: 16px;
+    margin-bottom: 7px;
+    padding-bottom: 5px;
+    font-size: 22px;
+    -unity-font-style: bold;
+    color: rgb(230, 179, 84);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(78, 88, 105);
+}
+
+.card-test-description-field .unity-text-field__input {
+    min-height: 90px;
+    white-space: normal;
+}
+
+.card-test-readout {
+    margin-top: 10px;
+    padding: 10px;
+    white-space: normal;
+    background-color: rgb(23, 27, 34);
+    border-radius: 5px;
+    color: rgb(210, 216, 228);
+}
+
+.card-test-button-row {
+    margin-top: 12px;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.card-test-save-status {
+    margin-top: 8px;
+    white-space: normal;
+}
+
+.card-test-save-status--error {
+    color: rgb(236, 100, 90);
+}
+
+.warrior-card {
+    position: relative;
+    flex-shrink: 0;
+    background-size: 100% 100%;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.warrior-card__region {
+    position: absolute;
+    padding: 2px;
+    white-space: normal;
+    overflow: hidden;
+    -unity-text-align: middle-center;
+}
+
+.warrior-card__cost {
+    color: white;
+    -unity-font-style: bold;
+    -unity-text-outline-color: rgb(39, 23, 12);
+    -unity-text-outline-width: 2px;
+}
+
+.warrior-card__title {
+    color: rgb(255, 231, 179);
+    -unity-font-style: bold;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -unity-text-overflow-position: end;
+    -unity-text-outline-color: rgb(33, 15, 11);
+    -unity-text-outline-width: 1px;
+}
+
+.warrior-card__description {
+    color: rgb(55, 37, 22);
+    -unity-font-style: bold;
+}
+
+.warrior-card--guides .warrior-card__region {
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgba(60, 210, 255, 0.85);
+    border-right-color: rgba(60, 210, 255, 0.85);
+    border-top-color: rgba(60, 210, 255, 0.85);
+    border-bottom-color: rgba(60, 210, 255, 0.85);
+    background-color: rgba(60, 210, 255, 0.08);
+}
+
+@media (max-width: 1250px) {
+    .card-test-controls {
+        width: 420px;
+        min-width: 360px;
+    }
+
+    .card-test-stage {
+        min-width: 400px;
+    }
+}

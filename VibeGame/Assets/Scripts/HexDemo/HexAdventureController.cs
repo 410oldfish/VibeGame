@@ -1055,6 +1055,8 @@ namespace HexDemo
                     {
                         title = $"[{reward.energyCost}] {reward.displayName}",
                         body = reward.description,
+                        card = reward,
+                        cardCaption = "选择",
                         action = () => { _runState.deckDefinitions.Add(reward); ShowConsumableReward(); },
                     });
                 }

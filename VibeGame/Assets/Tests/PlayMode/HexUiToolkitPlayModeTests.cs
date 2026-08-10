@@ -16,8 +16,12 @@ namespace HexDemo.PlayModeTests
             Assert.That(Resources.Load<VisualTreeAsset>("UI Toolkit/Screens/BattleRoot"), Is.Not.Null);
             Assert.That(Resources.Load<VisualTreeAsset>("UI Toolkit/Screens/AdventureRoot"), Is.Not.Null);
             Assert.That(Resources.Load<VisualTreeAsset>("UI Toolkit/Screens/RestRoot"), Is.Not.Null);
+            Assert.That(Resources.Load<VisualTreeAsset>("UI Toolkit/Screens/CardPreviewRoot"), Is.Not.Null);
             Assert.That(Resources.Load<VisualTreeAsset>("UI Toolkit/Templates/Card"), Is.Not.Null);
             Assert.That(Resources.Load<StyleSheet>("UI Toolkit/Styles/HexTheme"), Is.Not.Null);
+            Assert.That(Resources.Load<StyleSheet>("UI Toolkit/Styles/CardPreview"), Is.Not.Null);
+            Assert.That(Resources.Load<Texture2D>("UI Toolkit/CardArt/WarriorCardBase"), Is.Not.Null);
+            Assert.That(Resources.Load("UI Toolkit/CardArt/WarriorCardLayout"), Is.Not.Null);
         }
 
         [UnityTest]
@@ -36,6 +40,43 @@ namespace HexDemo.PlayModeTests
 
             UnityEngine.Object.Destroy(first);
             UnityEngine.Object.Destroy(second);
+        }
+
+        [UnityTest]
+        public IEnumerator CardPreview_UpdatesContentAndLayoutInteractively()
+        {
+            var host = new GameObject("CardPreview");
+            host.AddComponent(RequireType("HexDemo.HexCardUiTestController"));
+            yield return null;
+
+            var root = host.GetComponent<UIDocument>().rootVisualElement;
+            var card = root.Q<VisualElement>("warrior-card-preview");
+            var costLabel = root.Q<Label>("card-cost");
+            var titleLabel = root.Q<Label>("card-title");
+            var descriptionLabel = root.Q<Label>("card-description");
+            var costField = root.Q<TextField>("content-cost");
+            var titleField = root.Q<TextField>("content-title");
+            var descriptionField = root.Q<TextField>("content-description");
+            var xSlider = root.Q<Slider>("layout-x");
+
+            Assert.That(card, Is.Not.Null);
+            Assert.That(costLabel, Is.Not.Null);
+            Assert.That(titleLabel, Is.Not.Null);
+            Assert.That(descriptionLabel, Is.Not.Null);
+            Assert.That(root.Q<DropdownField>("card-selector").choices.Count, Is.GreaterThan(0));
+
+            costField.value = "X";
+            titleField.value = "极长名称显示测试";
+            descriptionField.value = "这是一段用于验证多行换行、区域边界和中文字体的较长卡牌描述。";
+            xSlider.value = 10f;
+            yield return null;
+
+            Assert.That(costLabel.text, Is.EqualTo("X"));
+            Assert.That(titleLabel.text, Is.EqualTo("极长名称显示测试"));
+            Assert.That(descriptionLabel.text, Does.Contain("多行换行"));
+            Assert.That(costLabel.style.left.value.value, Is.EqualTo(10f).Within(0.01f));
+
+            UnityEngine.Object.Destroy(host);
         }
 
         [UnityTest]

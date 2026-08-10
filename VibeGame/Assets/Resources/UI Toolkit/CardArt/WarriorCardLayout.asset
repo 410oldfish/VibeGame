@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2428640ed3c82b649b2264ae9238d850, type: 3}
+  m_Name: WarriorCardLayout
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexCardUiLayoutSettings
+  referenceSize: {x: 1086, y: 1448}
+  cost:
+    normalizedRect:
+      serializedVersion: 2
+      x: 0.035
+      y: 0.025
+      width: 0.21700001
+      height: 0.175
+    fontSize: 48
+  title:
+    normalizedRect:
+      serializedVersion: 2
+      x: 0.236
+      y: 0.055
+      width: 0.565
+      height: 0.105
+    fontSize: 30
+  description:
+    normalizedRect:
+      serializedVersion: 2
+      x: 0.155
+      y: 0.49
+      width: 0.69
+      height: 0.39
+    fontSize: 28
