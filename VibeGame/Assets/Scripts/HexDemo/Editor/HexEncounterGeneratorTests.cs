@@ -7,6 +7,52 @@ namespace HexDemo.EditorTests
     public sealed class HexEncounterGeneratorTests
     {
         [Test]
+        public void FixedBattleMapPresets_MapDocumentedMvpSequence()
+        {
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.SmallBattle, 0).mapId, Is.EqualTo(HexBattleMapPresetLibrary.GoblinOpenId));
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.SmallBattle, 1).mapId, Is.EqualTo(HexBattleMapPresetLibrary.SpearGoblinCoverId));
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.SmallBattle, 2).mapId, Is.EqualTo(HexBattleMapPresetLibrary.SpearGoblinCoverId));
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.SmallBattle, 3).mapId, Is.EqualTo(HexBattleMapPresetLibrary.OrcNarrowLaneId));
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.EliteBattle, 0).mapId, Is.EqualTo(HexBattleMapPresetLibrary.LivingWallEliteId));
+            Assert.That(HexBattleMapPresetLibrary.GetForNode(HexMapNodeType.Boss, 0).mapId, Is.EqualTo(HexBattleMapPresetLibrary.TribalChieftainBossId));
+        }
+
+        [Test]
+        public void FixedBattleMapPresets_UseOnlyMvpTerrainAndKnownEnemies()
+        {
+            string[] ids =
+            {
+                HexBattleMapPresetLibrary.GoblinOpenId,
+                HexBattleMapPresetLibrary.SpearGoblinCoverId,
+                HexBattleMapPresetLibrary.OrcNarrowLaneId,
+                HexBattleMapPresetLibrary.LivingWallEliteId,
+                HexBattleMapPresetLibrary.TribalChieftainBossId,
+            };
+
+            foreach (string id in ids)
+            {
+                var preset = HexBattleMapPresetLibrary.Get(id);
+                Assert.That(preset, Is.Not.Null, id);
+                Assert.That(preset.width, Is.EqualTo(11), id);
+                Assert.That(preset.height, Is.EqualTo(11), id);
+                Assert.That(preset.enemySpawns, Is.Not.Empty, id);
+                Assert.That(preset.enemySpawns.All(spawn => HexCardLibrary.GetEnemyDefinition(spawn.enemyDefinitionId) != null), Is.True, id);
+                Assert.That(preset.terrainOverrides.All(IsMvpTerrainOverride), Is.True, id);
+            }
+        }
+
+        [Test]
+        public void OrcPreset_HasStraightClearOpeningChargeLane()
+        {
+            var preset = HexBattleMapPresetLibrary.Get(HexBattleMapPresetLibrary.OrcNarrowLaneId);
+            var orc = preset.enemySpawns.First(spawn => spawn.enemyDefinitionId == HexEncounterGenerator.OrcWarriorId);
+
+            Assert.That(preset.playerSpawnCoord, Is.EqualTo(new HexAxialCoord(3, 5)));
+            Assert.That(orc.spawnCoord, Is.EqualTo(new HexAxialCoord(6, 5)));
+            Assert.That(preset.terrainOverrides.Any(item => item.coord.Equals(new HexAxialCoord(4, 5)) || item.coord.Equals(new HexAxialCoord(5, 5))), Is.False);
+        }
+
+        [Test]
         public void FirstThreeCombats_UseDocumentedWeakPoolWeightsAndConstraints()
         {
             for (int seed = 1; seed <= 200; seed++)
@@ -86,6 +132,25 @@ namespace HexDemo.EditorTests
             HexAxialCoord blocker = HexAxialCoord.Neighbor(start, 0);
             Assert.That(HexOrcWarriorRules.TryBuildChargePath(start, target, coord => coord.Equals(blocker), out _, out _), Is.False);
             Assert.That(HexOrcWarriorRules.TryBuildChargePath(start, new HexAxialCoord(3, 3), _ => false, out _, out _), Is.False);
+        }
+
+        private static bool IsMvpTerrainOverride(HexBattleMapTerrainOverride item)
+        {
+            if (item == null)
+                return false;
+
+            bool mvpZone = item.zone == HexTerrainZoneType.Normal || item.zone == HexTerrainZoneType.Pit;
+            bool mvpStructure = item.structureType == HexTerrainStructureType.None ||
+                                item.structureType == HexTerrainStructureType.Barrier ||
+                                item.structureType == HexTerrainStructureType.Ruin;
+            bool mvpProp = string.IsNullOrWhiteSpace(item.propId) ||
+                           item.propId == HexPropLibrary.DefaultBarrierPropId ||
+                           item.propId == HexPropLibrary.DefaultRuinPropId;
+            bool mvpPickup = item.pickupType == HexTerrainPickupType.None ||
+                             item.pickupType == HexTerrainPickupType.Heal ||
+                             item.pickupType == HexTerrainPickupType.TemporaryStrength ||
+                             item.pickupType == HexTerrainPickupType.TemporaryCard;
+            return mvpZone && mvpStructure && mvpProp && mvpPickup;
         }
     }
 }

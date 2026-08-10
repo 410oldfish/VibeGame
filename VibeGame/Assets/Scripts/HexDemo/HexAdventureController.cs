@@ -493,28 +493,34 @@ namespace HexDemo
             var roomRoot = new GameObject($"Room_{title.Replace(" ", "_")}");
             _roomRoots.Add(roomRoot);
             HexMapNodeType nodeType = GetBattleNodeType(title);
-            int encounterSeed = Random.Range(1, int.MaxValue);
-            HexEncounterPlan encounterPlan = HexEncounterGenerator.Generate(
-                nodeType,
-                _runState.completedCombatCount,
-                encounterSeed,
-                _runState.lastNormalEncounterSignature);
+            HexBattleMapPreset mapPreset = HexBattleMapPresetLibrary.GetForNode(nodeType, _runState.completedCombatCount);
+            int encounterSeed = mapPreset?.randomSeed ?? Random.Range(1, int.MaxValue);
+            HexEncounterPlan encounterPlan = mapPreset != null
+                ? HexBattleMapPresetLibrary.CreateEncounterPlan(mapPreset, encounterSeed)
+                : HexEncounterGenerator.Generate(
+                    nodeType,
+                    _runState.completedCombatCount,
+                    encounterSeed,
+                    _runState.lastNormalEncounterSignature);
             if (encounterPlan.kind == HexEncounterPlanKind.Normal)
                 _runState.lastNormalEncounterSignature = encounterPlan.Signature;
 
             var grid = roomRoot.AddComponent<HexGrid>();
-            grid.width = 11;
-            grid.height = 11;
+            grid.width = mapPreset?.width ?? 11;
+            grid.height = mapPreset?.height ?? 11;
             grid.hexSize = 0.55f;
             grid.tileY = 0f;
             grid.heightStep = 0f;
             grid.tilePrefab = LoadTerrainTilePrefab();
             grid.clickLayerMask = ~0;
-            grid.generateFeatureTerrain = encounterPlan.kind != HexEncounterPlanKind.EliteLivingWallPair;
+            grid.generateFeatureTerrain = mapPreset == null && encounterPlan.kind != HexEncounterPlanKind.EliteLivingWallPair;
             grid.Build();
+            HexBattleMapPresetLibrary.ApplyTerrainOverrides(grid, mapPreset);
             ConfigureBattleCamera(grid);
 
-            var desiredPlayerCoord = encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair
+            var desiredPlayerCoord = mapPreset != null
+                ? mapPreset.playerSpawnCoord
+                : encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair
                 ? new HexAxialCoord(5, 5)
                 : new HexAxialCoord(3, 5);
             var playerCoord = HexBattleSetupUtility.FindClosestExistingCoord(grid, desiredPlayerCoord);
@@ -551,7 +557,11 @@ namespace HexDemo
                 new HexAxialCoord(8, 4),
             };
 
-            if (encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair)
+            if (mapPreset != null)
+            {
+                SpawnPresetEnemies(roomRoot.transform, grid, mapPreset, playerCoord, enemyUnits);
+            }
+            else if (encounterPlan.kind == HexEncounterPlanKind.EliteLivingWallPair)
             {
                 if (!TrySpawnAdventureLivingWallPair(roomRoot.transform, grid, playerCoord, enemyUnits))
                     Debug.LogError("Unable to create a complete living wall pair for the elite encounter.");
@@ -598,6 +608,71 @@ namespace HexDemo
             var battleController = controllerGO.AddComponent<HexBattleController>();
             battleController.Initialize(grid, playerUnit, enemyUnits, _sceneCamera, _runState);
             battleController.BattleFinished += OnBattleFinished;
+        }
+
+        private void SpawnPresetEnemies(
+            Transform parent,
+            HexGrid grid,
+            HexBattleMapPreset preset,
+            HexAxialCoord playerCoord,
+            List<HexBattleUnit> enemyUnits)
+        {
+            if (preset == null || preset.enemySpawns == null)
+                return;
+
+            for (int i = 0; i < preset.enemySpawns.Count; i++)
+            {
+                var spawn = preset.enemySpawns[i];
+                if (spawn == null)
+                    continue;
+
+                var enemyDefinition = HexCardLibrary.GetEnemyDefinition(spawn.enemyDefinitionId);
+                if (enemyDefinition == null)
+                {
+                    Debug.LogError($"Unknown preset enemyDefinitionId: {spawn.enemyDefinitionId} in {preset.mapId}");
+                    continue;
+                }
+
+                if (string.Equals(spawn.enemyDefinitionId, HexEncounterGenerator.LivingWallId, System.StringComparison.Ordinal))
+                {
+                    if (!spawn.hasLivingWallPartner)
+                    {
+                        Debug.LogError($"Living wall preset missing partner spawn coord in {preset.mapId}");
+                        continue;
+                    }
+
+                    if (!TrySpawnAdventureLivingWallPairAt(
+                            parent,
+                            grid,
+                            playerCoord,
+                            enemyUnits,
+                            enemyDefinition,
+                            spawn.spawnCoord,
+                            spawn.livingWallPartnerSpawnCoord,
+                            string.IsNullOrWhiteSpace(spawn.displayName) ? enemyDefinition.displayName : spawn.displayName))
+                    {
+                        Debug.LogError($"Unable to create preset living wall pair for {preset.mapId}.");
+                    }
+                    continue;
+                }
+
+                var enemyCoord = HexBattleSetupUtility.FindClosestExistingCoord(
+                    grid,
+                    spawn.spawnCoord,
+                    enemyUnits.SelectMany(unit => unit.OccupiedCoords).Append(playerCoord));
+                if (!enemyCoord.Equals(spawn.spawnCoord))
+                    Debug.LogWarning($"Preset enemy spawn moved in {preset.mapId}: {spawn.spawnCoord} -> {enemyCoord}");
+
+                enemyUnits.Add(CreateAdventureEnemyUnit(
+                    parent,
+                    grid,
+                    enemyDefinition,
+                    $"enemy_{i + 1}",
+                    string.IsNullOrWhiteSpace(spawn.displayName) ? enemyDefinition.displayName : spawn.displayName,
+                    enemyCoord,
+                    GetEncounterEnemyHealth(enemyDefinition.id),
+                    null));
+            }
         }
 
         private HexBattleUnit CreateAdventureEnemyUnit(
@@ -659,35 +734,55 @@ namespace HexDemo
                 HexAxialCoord secondCore = StepInDirection(playerCoord, direction + 3, 3);
                 var firstOffsets = HexLivingWallRules.CreateInitialOffsets(grid, firstCore, secondCore);
                 var secondOffsets = HexLivingWallRules.CreateInitialOffsets(grid, secondCore, firstCore);
-                var firstCoords = BuildLivingWallCoords(firstCore, firstOffsets).ToList();
-                var secondCoords = BuildLivingWallCoords(secondCore, secondOffsets).ToList();
-                if (!CanSpawnAdventureLivingWall(grid, playerCoord, firstCoords, enemyUnits) ||
-                    !CanSpawnAdventureLivingWall(grid, playerCoord, secondCoords, enemyUnits) ||
-                    firstCoords.Intersect(secondCoords).Any())
-                    continue;
-
-                const string firstId = "enemy_living_wall_a";
-                const string secondId = "enemy_living_wall_b";
-                enemyUnits.Add(CreateAdventureEnemyUnit(
-                    parent, grid, definition, firstId, $"{definition.displayName} A", firstCore, 34,
-                    new HexLivingWallRuntimeState
-                    {
-                        spawnOrder = 0,
-                        pairedWallId = secondId,
-                        footprintOffsets = firstOffsets,
-                    }));
-                enemyUnits.Add(CreateAdventureEnemyUnit(
-                    parent, grid, definition, secondId, $"{definition.displayName} B", secondCore, 34,
-                    new HexLivingWallRuntimeState
-                    {
-                        spawnOrder = 1,
-                        pairedWallId = firstId,
-                        footprintOffsets = secondOffsets,
-                    }));
-                return true;
+                if (TrySpawnAdventureLivingWallPairAt(parent, grid, playerCoord, enemyUnits, definition, firstCore, secondCore, definition.displayName))
+                    return true;
             }
 
             return false;
+        }
+
+        private bool TrySpawnAdventureLivingWallPairAt(
+            Transform parent,
+            HexGrid grid,
+            HexAxialCoord playerCoord,
+            List<HexBattleUnit> enemyUnits,
+            HexEnemyDefinition definition,
+            HexAxialCoord firstCore,
+            HexAxialCoord secondCore,
+            string displayName)
+        {
+            if (definition == null)
+                return false;
+
+            var firstOffsets = HexLivingWallRules.CreateInitialOffsets(grid, firstCore, secondCore);
+            var secondOffsets = HexLivingWallRules.CreateInitialOffsets(grid, secondCore, firstCore);
+            var firstCoords = BuildLivingWallCoords(firstCore, firstOffsets).ToList();
+            var secondCoords = BuildLivingWallCoords(secondCore, secondOffsets).ToList();
+            if (!CanSpawnAdventureLivingWall(grid, playerCoord, firstCoords, enemyUnits) ||
+                !CanSpawnAdventureLivingWall(grid, playerCoord, secondCoords, enemyUnits) ||
+                firstCoords.Intersect(secondCoords).Any())
+                return false;
+
+            const string firstId = "enemy_living_wall_a";
+            const string secondId = "enemy_living_wall_b";
+            string baseName = string.IsNullOrWhiteSpace(displayName) ? definition.displayName : displayName;
+            enemyUnits.Add(CreateAdventureEnemyUnit(
+                parent, grid, definition, firstId, $"{baseName} A", firstCore, 34,
+                new HexLivingWallRuntimeState
+                {
+                    spawnOrder = 0,
+                    pairedWallId = secondId,
+                    footprintOffsets = firstOffsets,
+                }));
+            enemyUnits.Add(CreateAdventureEnemyUnit(
+                parent, grid, definition, secondId, $"{baseName} B", secondCore, 34,
+                new HexLivingWallRuntimeState
+                {
+                    spawnOrder = 1,
+                    pairedWallId = firstId,
+                    footprintOffsets = secondOffsets,
+                }));
+            return true;
         }
 
         private static HexAxialCoord StepInDirection(HexAxialCoord start, int direction, int distance)

@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9d6eef3609574a429f4d73131564263, type: 3}
+  m_Name: BattleSandbox_BMAP_01_Goblin_Open
+  m_EditorClassIdentifier: Assembly-CSharp::HexDemo.HexBattleSandboxScenarioSO
+  useFixedRandomSeed: 1
+  randomSeed: 1101
+  quickBottomCard: 0
+  terrain:
+    width: 11
+    height: 11
+    hexSize: 0.55
+    tileY: 0
+    tileDepth: 0.45
+    heightStep: 0
+    generateFeatureTerrain: 0
+    highGroundChance: 0
+    ruinChance: 0
+    overrides:
+    - coord: {x: 5, y: 4}
+      zone: 0
+      baseTerrain: 0
+      structureType: 1
+      propId: stone_pillar
+      structureHp: 0
+      pickupType: 0
+      pickupAmount: 0
+    - coord: {x: 6, y: 5}
+      zone: 0
+      baseTerrain: 0
+      structureType: 2
+      propId: wood_crate
+      structureHp: 4
+      pickupType: 0
+      pickupAmount: 0
+    - coord: {x: 5, y: 6}
+      zone: 0
+      baseTerrain: 0
+      structureType: 2
+      propId: wood_crate
+      structureHp: 4
+      pickupType: 0
+      pickupAmount: 0
+  player:
+    profession: 1
+    displayName: Hero
+    maxHealth: 70
+    currentHealth: 70
+    maxEnergy: 3
+    drawPerTurn: 4
+    maxMovePoints: 2
+    attackRange: 1
+    spawnCoord: {x: 3, y: 5}
+    deckCardIds:
+    - warrior_strike
+    - warrior_strike
+    - warrior_windstep_ready
+    - warrior_strike
+    - warrior_charge
+    - warrior_defend
+    - warrior_defend
+    - warrior_defend
+    - warrior_move_forward
+  enemies:
+  - enemyType: 0
+    legacyEnemyDefinitionId:
+    displayNameOverride: "\u54E5\u5E03\u6797 A"
+    spawnCoord: {x: 7, y: 4}
+    livingWallPartnerSpawnCoord: {x: 3, y: 5}
+    maxHealthOverride: 12
+    currentHealthOverride: 12
+    deckCardIds: []
+  - enemyType: 0
+    legacyEnemyDefinitionId:
+    displayNameOverride: "\u54E5\u5E03\u6797 B"
+    spawnCoord: {x: 7, y: 6}
+    livingWallPartnerSpawnCoord: {x: 3, y: 5}
+    maxHealthOverride: 12
+    currentHealthOverride: 12
+    deckCardIds: []
