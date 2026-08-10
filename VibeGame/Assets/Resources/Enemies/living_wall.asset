@@ -33,4 +33,4 @@ MonoBehaviour:
   - enemy_wall_fortify
   - enemy_wall_fortify
   phaseTwoDeckCardIds: []
-  bottomCardId: enemy_wall_bottom
+  bottomCardId:

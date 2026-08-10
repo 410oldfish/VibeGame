@@ -225,7 +225,7 @@ namespace HexDemo.EditorTests
             Assert.That(GetCount(counts, "enemy_wall_spike"), Is.EqualTo(2));
             Assert.That(GetCount(counts, "enemy_wall_reform"), Is.EqualTo(1));
             Assert.That(GetCount(counts, "enemy_wall_fortify"), Is.EqualTo(2));
-            Assert.That(definition.bottomCard.id, Is.EqualTo("enemy_wall_bottom"));
+            Assert.That(definition.bottomCard, Is.Null);
             Assert.That(HexCardLibrary.GetCardById("enemy_wall_spike").amount, Is.EqualTo(10));
         }
 

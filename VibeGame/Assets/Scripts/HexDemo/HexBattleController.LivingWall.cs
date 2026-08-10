@@ -21,22 +21,33 @@ namespace HexDemo
             if (wall == null || !wall.IsAlive || !wall.IsLivingWall || card?.definition == null)
                 yield break;
 
-            wall.SetLivingWallIntentPreview(null, false);
+            List<HexBattleUnit> actingWalls = GetLivingWallActionMembers(wall)
+                .Where(member => member.IsAlive && member.CanActThisTurn)
+                .ToList();
+            for (int i = 0; i < actingWalls.Count; i++)
+                actingWalls[i].SetLivingWallIntentPreview(null, false);
+            if (actingWalls.Count == 0)
+                yield break;
 
             switch (card.definition.id)
             {
                 case "enemy_wall_advance":
-                    yield return ResolveLivingWallAdvance(wall);
+                    yield return ResolveLivingWallPairAdvance(actingWalls);
                     break;
                 case "enemy_wall_spike":
-                    yield return ResolveLivingWallSpike(wall);
+                    yield return ResolveLivingWallPairSpike(actingWalls);
                     break;
                 case "enemy_wall_reform":
-                    wall.State.livingWall.reformPending = true;
+                    for (int i = 0; i < actingWalls.Count; i++)
+                        actingWalls[i].State.livingWall.reformPending = true;
                     break;
                 case "enemy_wall_fortify":
-                    GainArmorWithFeedback(wall, wall.FootprintSize * HexLivingWallRules.ArmorPerCell);
-                    wall.State.livingWall.movementLocked = true;
+                    for (int i = 0; i < actingWalls.Count; i++)
+                    {
+                        HexBattleUnit actingWall = actingWalls[i];
+                        GainArmorWithFeedback(actingWall, actingWall.FootprintSize * HexLivingWallRules.ArmorPerCell);
+                        actingWall.State.livingWall.movementLocked = true;
+                    }
                     break;
             }
         }
@@ -136,7 +147,7 @@ namespace HexDemo
             if (wall?.State?.livingWall == null)
                 return;
             wall.State.livingWall.reformPending = false;
-            _enemyIntentSlots.Remove(wall);
+            RemoveLivingWallIntentSlots(GetLivingWallActionMembers(wall));
             wall.RefreshLabel();
         }
 
@@ -188,6 +199,88 @@ namespace HexDemo
                 wall.State.livingWall.pairedWallId = pair.State.id;
                 pair.State.livingWall.pairedWallId = wall.State.id;
             }
+
+            SynchronizeLivingWallPairRuntime(walls);
+        }
+
+        private void SynchronizeLivingWallPairRuntime(IReadOnlyList<HexBattleUnit> walls)
+        {
+            if (walls == null)
+                return;
+
+            var handled = new HashSet<HexBattleUnit>();
+            for (int i = 0; i < walls.Count; i++)
+            {
+                HexBattleUnit wall = walls[i];
+                if (wall == null || !wall.IsAlive || !wall.IsLivingWall || handled.Contains(wall))
+                    continue;
+
+                HexBattleUnit pair = GetLivingWallPair(wall);
+                if (pair == null)
+                    continue;
+
+                List<HexBattleUnit> members = OrderLivingWallMembers(wall, pair);
+                HexBattleUnit owner = members[0];
+                HexBattleUnit follower = members[1];
+                handled.Add(owner);
+                handled.Add(follower);
+
+                follower.UseSharedDeck(owner.Deck);
+                if (_enemyIntentSlots.TryGetValue(owner, out var sharedSlots) && sharedSlots != null)
+                {
+                    _enemyIntentSlots[follower] = sharedSlots;
+                }
+                else
+                {
+                    _enemyIntentSlots.Remove(owner);
+                    _enemyIntentSlots.Remove(follower);
+                }
+            }
+        }
+
+        private List<HexBattleUnit> GetLivingWallActionMembers(HexBattleUnit wall)
+        {
+            if (wall == null || !wall.IsAlive || !wall.IsLivingWall)
+                return new List<HexBattleUnit>();
+
+            HexBattleUnit pair = GetLivingWallPair(wall);
+            return pair != null
+                ? OrderLivingWallMembers(wall, pair)
+                : new List<HexBattleUnit> { wall };
+        }
+
+        private HexBattleUnit GetLivingWallActionOwner(HexBattleUnit wall)
+        {
+            List<HexBattleUnit> members = GetLivingWallActionMembers(wall);
+            return members.Count > 0 ? members[0] : null;
+        }
+
+        private static List<HexBattleUnit> OrderLivingWallMembers(HexBattleUnit first, HexBattleUnit second)
+        {
+            return new[] { first, second }
+                .Where(member => member != null && member.IsAlive && member.IsLivingWall)
+                .Distinct()
+                .OrderBy(member => member.State.livingWall.spawnOrder)
+                .ThenBy(member => member.State.id, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        private void SetLivingWallIntentSlots(IReadOnlyList<HexBattleUnit> members, List<HexEnemyIntentSlot> slots)
+        {
+            if (members == null)
+                return;
+            for (int i = 0; i < members.Count; i++)
+                if (members[i] != null)
+                    _enemyIntentSlots[members[i]] = slots;
+        }
+
+        private void RemoveLivingWallIntentSlots(IReadOnlyList<HexBattleUnit> members)
+        {
+            if (members == null)
+                return;
+            for (int i = 0; i < members.Count; i++)
+                if (members[i] != null)
+                    _enemyIntentSlots.Remove(members[i]);
         }
 
         private HexBattleUnit GetLivingWallPair(HexBattleUnit wall)
@@ -209,7 +302,7 @@ namespace HexDemo
 
         private IEnumerator ResolveLivingWallAdvance(HexBattleUnit wall)
         {
-            if (grid == null || wall.State.livingWall.movementLocked)
+            if (grid == null || wall == null || !wall.IsAlive || wall.State.livingWall.movementLocked)
                 yield break;
 
             HexBattleUnit directionTarget = GetLivingWallDirectionTarget(wall);
@@ -217,6 +310,42 @@ namespace HexDemo
                 yield break;
 
             int direction = HexBattlePathing.GetPrimaryDirectionIndex(grid, wall.State.coord, directionTarget.State.coord);
+            yield return ResolveLivingWallAdvanceInDirection(wall, direction, directionTarget.State.coord);
+        }
+
+        private IEnumerator ResolveLivingWallPairAdvance(IReadOnlyList<HexBattleUnit> walls)
+        {
+            if (grid == null || walls == null)
+                yield break;
+
+            var plans = new List<(HexBattleUnit wall, int direction, HexAxialCoord facingCoord)>();
+            for (int i = 0; i < walls.Count; i++)
+            {
+                HexBattleUnit wall = walls[i];
+                if (wall == null || !wall.IsAlive || wall.State.livingWall.movementLocked)
+                    continue;
+                HexBattleUnit directionTarget = GetLivingWallDirectionTarget(wall);
+                if (directionTarget == null || !directionTarget.IsAlive)
+                    continue;
+                plans.Add((
+                    wall,
+                    HexBattlePathing.GetPrimaryDirectionIndex(grid, wall.State.coord, directionTarget.State.coord),
+                    directionTarget.State.coord));
+            }
+
+            for (int i = 0; i < plans.Count; i++)
+            {
+                var plan = plans[i];
+                if (plan.wall != null && plan.wall.IsAlive)
+                    yield return ResolveLivingWallAdvanceInDirection(plan.wall, plan.direction, plan.facingCoord);
+            }
+        }
+
+        private IEnumerator ResolveLivingWallAdvanceInDirection(HexBattleUnit wall, int direction, HexAxialCoord facingCoord)
+        {
+            if (grid == null || wall == null || !wall.IsAlive || wall.State.livingWall.movementLocked)
+                yield break;
+
             HexAxialCoord destinationCore = HexAxialCoord.Neighbor(wall.State.coord, direction);
             var destinationCoords = BuildFootprintCoords(destinationCore, wall.State.livingWall.footprintOffsets);
             HexBattleUnit pair = GetLivingWallPair(wall);
@@ -266,7 +395,7 @@ namespace HexDemo
                 new List<HexAxialCoord> { wall.State.coord, destinationCore },
                 0,
                 HexMovementCause.Active,
-                directionTarget.State.coord);
+                facingCoord);
         }
 
         private void ApplyLivingWallSqueeze(HexBattleUnit target, HexBattleUnit wall)
@@ -301,28 +430,44 @@ namespace HexDemo
 
         private IEnumerator ResolveLivingWallSpike(HexBattleUnit wall)
         {
-            if (grid == null)
+            if (wall == null)
                 yield break;
 
-            HexBattleUnit directionTarget = GetLivingWallDirectionTarget(wall);
-            if (directionTarget == null || !directionTarget.IsAlive)
+            yield return ResolveLivingWallPairSpike(new[] { wall });
+        }
+
+        private IEnumerator ResolveLivingWallPairSpike(IReadOnlyList<HexBattleUnit> walls)
+        {
+            if (grid == null || walls == null)
                 yield break;
 
-            int direction = HexBattlePathing.GetPrimaryDirectionIndex(grid, wall.State.coord, directionTarget.State.coord);
-            var occupied = new HashSet<HexAxialCoord>(wall.OccupiedCoords);
-            var targets = new HashSet<HexBattleUnit>();
-            foreach (HexAxialCoord segment in occupied)
+            var targetSources = new Dictionary<HexBattleUnit, HexBattleUnit>();
+            for (int wallIndex = 0; wallIndex < walls.Count; wallIndex++)
             {
-                HexAxialCoord front = HexAxialCoord.Neighbor(segment, direction);
-                if (occupied.Contains(front))
+                HexBattleUnit wall = walls[wallIndex];
+                if (wall == null || !wall.IsAlive)
                     continue;
-                HexBattleUnit target = FindUnitAtCoord(front, wall);
-                if (target != null && target.IsAlive && target.State.faction != wall.State.faction)
-                    targets.Add(target);
+
+                HexBattleUnit directionTarget = GetLivingWallDirectionTarget(wall);
+                if (directionTarget == null || !directionTarget.IsAlive)
+                    continue;
+
+                int direction = HexBattlePathing.GetPrimaryDirectionIndex(grid, wall.State.coord, directionTarget.State.coord);
+                var occupied = new HashSet<HexAxialCoord>(wall.OccupiedCoords);
+                foreach (HexAxialCoord segment in occupied)
+                {
+                    HexAxialCoord front = HexAxialCoord.Neighbor(segment, direction);
+                    if (occupied.Contains(front))
+                        continue;
+                    HexBattleUnit target = FindUnitAtCoord(front, wall);
+                    if (target != null && target.IsAlive && target.State.faction != wall.State.faction && !targetSources.ContainsKey(target))
+                        targetSources[target] = wall;
+                }
             }
 
-            foreach (HexBattleUnit target in targets.OrderBy(unit => unit.State.id, StringComparer.Ordinal))
-                yield return ResolveDirectAttackRoutine(wall, target, HexLivingWallRules.SpikeDamage);
+            foreach (var entry in targetSources.OrderBy(entry => entry.Key.State.id, StringComparer.Ordinal))
+                if (entry.Key.IsAlive && entry.Value.IsAlive)
+                    yield return ResolveDirectAttackRoutine(entry.Value, entry.Key, HexLivingWallRules.SpikeDamage);
         }
 
         private bool TryResolveLivingWallReform(HexBattleUnit wall)

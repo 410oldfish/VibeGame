@@ -327,6 +327,282 @@ namespace HexDemo.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator LivingWallPair_SharesDeckIntentSlotAndHudCard()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var walls = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+
+            object firstDeck = GetProperty(walls[0], "Deck");
+            object secondDeck = GetProperty(walls[1], "Deck");
+            Assert.That(ReferenceEquals(firstDeck, secondDeck), Is.True);
+            Assert.That(GetProperty(firstDeck, "Hand") as IList, Has.Count.EqualTo(1));
+            Assert.That(GetProperty(firstDeck, "DrawPile") as IList, Has.Count.EqualTo(7));
+
+            var intentMap = GetField(controller, "_enemyIntentSlots") as IDictionary;
+            Assert.That(intentMap, Is.Not.Null);
+            var firstSlots = intentMap[walls[0]] as IList;
+            var secondSlots = intentMap[walls[1]] as IList;
+            Assert.That(firstSlots, Has.Count.EqualTo(1));
+            Assert.That(ReferenceEquals(firstSlots, secondSlots), Is.True);
+            Assert.That(ReferenceEquals(GetField(firstSlots[0], "card"), GetField(secondSlots[0], "card")), Is.True);
+
+            MethodInfo snapshotMethod = controllerType.GetMethod("GetBattleHudSnapshot", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(snapshotMethod, Is.Not.Null);
+            object snapshot = snapshotMethod.Invoke(controller, null);
+            var enemyRows = GetField(snapshot, "enemies") as IList;
+            Assert.That(enemyRows, Has.Count.EqualTo(2));
+            var firstHudSlots = GetField(enemyRows[0], "intentSlots") as IList;
+            var secondHudSlots = GetField(enemyRows[1], "intentSlots") as IList;
+            Assert.That(GetField(firstHudSlots[0], "cardName"), Is.EqualTo(GetField(secondHudSlots[0], "cardName")));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_FortifyAndReformResolveOnceForBothWalls()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var walls = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+
+            object fortify = PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_fortify");
+            yield return RunEnemyIntentCard(controllerType, controller, walls[0], fortify);
+
+            Assert.That(GetField(GetState(walls[0]), "armor"), Is.EqualTo(24));
+            Assert.That(GetField(GetState(walls[1]), "armor"), Is.EqualTo(24));
+            object sharedDeck = GetProperty(walls[0], "Deck");
+            Assert.That(GetProperty(sharedDeck, "Hand") as IList, Is.Empty);
+            Assert.That(GetProperty(sharedDeck, "DiscardPile") as IList, Has.Count.EqualTo(1));
+
+            object reform = PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_reform");
+            yield return RunEnemyIntentCard(controllerType, controller, walls[0], reform);
+            Assert.That(GetField(GetField(GetState(walls[0]), "livingWall"), "reformPending"), Is.True);
+            Assert.That(GetField(GetField(GetState(walls[1]), "livingWall"), "reformPending"), Is.True);
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_AdvanceAllowsOneSideToFailIndependently()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            var walls = units
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(playerState, "currentHealth", 100);
+            SetField(playerState, "armor", 0);
+            SetField(playerState, "toughness", 1);
+            SetField(GetState(walls[0]), "coord", Activator.CreateInstance(coordType, 3, 5));
+            SetField(GetState(walls[1]), "coord", Activator.CreateInstance(coordType, 7, 5));
+
+            object advance = PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_advance");
+            yield return RunEnemyIntentCard(controllerType, controller, walls[0], advance);
+
+            Assert.That(GetCoord(GetField(GetState(walls[0]), "coord"), "q"), Is.EqualTo(3));
+            Assert.That(GetCoord(GetField(GetState(walls[1]), "coord"), "q"), Is.EqualTo(6));
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(50));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_SpikeHitsSameTargetOnlyOnce()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var units = GetUnits(scene);
+            Component player = units.Single(component => GetField(GetState(component), "faction").ToString() == "Player");
+            var walls = units
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+            Type coordType = RequireType("HexDemo.HexAxialCoord");
+            object playerState = GetState(player);
+            SetField(playerState, "coord", Activator.CreateInstance(coordType, 5, 5));
+            SetField(playerState, "currentHealth", 100);
+            SetField(playerState, "armor", 0);
+            SetField(GetState(walls[0]), "coord", Activator.CreateInstance(coordType, 4, 5));
+            SetField(GetState(walls[1]), "coord", Activator.CreateInstance(coordType, 6, 5));
+
+            object spike = PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_spike");
+            yield return RunEnemyIntentCard(controllerType, controller, walls[0], spike);
+
+            Assert.That(GetField(playerState, "currentHealth"), Is.EqualTo(90));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_DisabledMemberDoesNotApplyItsHalfOfSharedAction()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var walls = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+
+            SetField(GetState(walls[0]), "stun", 1);
+            MethodInfo beginTurn = walls[0].GetType().GetMethod("BeginTurn", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(beginTurn, Is.Not.Null);
+            beginTurn.Invoke(walls[0], null);
+            Assert.That(GetProperty(walls[0], "CanActThisTurn"), Is.EqualTo(false));
+
+            object fortify = PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_fortify");
+            yield return RunEnemyIntentCard(controllerType, controller, walls[0], fortify);
+
+            Assert.That(GetField(GetState(walls[0]), "armor"), Is.Zero);
+            Assert.That(GetField(GetState(walls[1]), "armor"), Is.EqualTo(24));
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_BothDisabledSkipsSharedAction()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var walls = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+
+            MethodInfo beginTurn = walls[0].GetType().GetMethod("BeginTurn", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(beginTurn, Is.Not.Null);
+            for (int i = 0; i < walls.Length; i++)
+            {
+                SetField(GetState(walls[i]), "stun", 1);
+                beginTurn.Invoke(walls[i], null);
+                Assert.That(GetProperty(walls[i], "CanActThisTurn"), Is.EqualTo(false));
+            }
+
+            PrepareSingleLivingWallIntent(controllerType, controller, walls[0], "enemy_wall_fortify");
+            MethodInfo runEnemyTurn = controllerType.GetMethod("RunEnemyTurn", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(runEnemyTurn, Is.Not.Null);
+            var routine = runEnemyTurn.Invoke(controller, null) as IEnumerator;
+            Assert.That(routine, Is.Not.Null);
+            yield return controller.StartCoroutine(routine);
+
+            Assert.That(GetField(GetState(walls[0]), "armor"), Is.Zero);
+            Assert.That(GetField(GetState(walls[1]), "armor"), Is.Zero);
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_EmptySharedDrawPileDoesNotSummonOffspring()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            Component wall = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .First();
+
+            object definition = InvokeStatic("HexDemo.HexCardLibrary", "GetCardById", "enemy_wall_fortify");
+            Array deckDefinitions = Array.CreateInstance(definition.GetType(), 1);
+            deckDefinitions.SetValue(definition, 0);
+            MethodInfo prepareDeck = wall.GetType().GetMethod("PrepareDeckForBattle", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(prepareDeck, Is.Not.Null);
+            prepareDeck.Invoke(wall, new object[] { deckDefinitions });
+
+            InvokeInstance(controllerType, controller, "DrawEnemyIntentCards", wall);
+            int offspringCount = GetUnits(scene).Count(component =>
+                (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall" &&
+                (bool)GetField(GetField(GetState(component), "livingWall"), "isOffspring"));
+            Assert.That(offspringCount, Is.Zero);
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
+        public IEnumerator LivingWallPair_SurvivorKeepsDeckAndSharesItWithOffspring()
+        {
+            Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
+            yield return null;
+            yield return null;
+
+            Type controllerType = RequireType("HexDemo.HexBattleController");
+            var controller = UnityEngine.Object.FindObjectsByType(controllerType)
+                .Cast<MonoBehaviour>()
+                .Single(component => component.gameObject.scene == scene);
+            var walls = GetUnits(scene)
+                .Where(component => (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall")
+                .OrderBy(component => (string)GetField(GetState(component), "id"))
+                .ToArray();
+            object survivorDeck = GetProperty(walls[0], "Deck");
+
+            SetField(GetState(walls[1]), "currentHealth", 0);
+            InvokeInstance(controllerType, controller, "RepairLivingWallPairs");
+            Assert.That(ReferenceEquals(GetProperty(walls[0], "Deck"), survivorDeck), Is.True);
+            Assert.That(GetField(GetField(GetState(walls[0]), "livingWall"), "pairedWallId"), Is.EqualTo(string.Empty));
+
+            Assert.That(InvokeInstance(controllerType, controller, "TrySummonLivingWallOffspring", walls[0]), Is.EqualTo(true));
+            Component offspring = GetUnits(scene)
+                .Single(component =>
+                    component != walls[0] &&
+                    (string)GetField(GetState(component), "enemyDefinitionId") == "living_wall" &&
+                    (bool)GetField(GetField(GetState(component), "livingWall"), "isOffspring"));
+            Assert.That(ReferenceEquals(GetProperty(offspring, "Deck"), survivorDeck), Is.True);
+            Assert.That(GetField(GetField(GetState(walls[0]), "livingWall"), "pairedWallId"), Is.EqualTo(GetField(GetState(offspring), "id")));
+
+            yield return SceneManager.UnloadSceneAsync(scene);
+        }
+
+        [UnityTest]
         public IEnumerator LivingWallMovement_BlocksWallCellsAndConnectedSegments()
         {
             Scene scene = BuildScenario("Debug/BattleSandbox_LivingWall");
@@ -827,6 +1103,30 @@ namespace HexDemo.PlayModeTests
             return property.GetValue(unit) as IList;
         }
 
+        private static object PrepareSingleLivingWallIntent(
+            Type controllerType,
+            MonoBehaviour controller,
+            Component wall,
+            string cardId)
+        {
+            object definition = InvokeStatic("HexDemo.HexCardLibrary", "GetCardById", cardId);
+            Assert.That(definition, Is.Not.Null, cardId);
+            Array deckDefinitions = Array.CreateInstance(definition.GetType(), 2);
+            deckDefinitions.SetValue(definition, 0);
+            deckDefinitions.SetValue(definition, 1);
+            MethodInfo prepareDeck = wall.GetType().GetMethod("PrepareDeckForBattle", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(prepareDeck, Is.Not.Null);
+            prepareDeck.Invoke(wall, new object[] { deckDefinitions });
+
+            InvokeInstance(controllerType, controller, "DrawEnemyIntentCards", wall);
+            IList slots = GetIntentExecutionOrder(controllerType, controller, wall);
+            Assert.That(slots, Has.Count.EqualTo(1));
+            object card = GetField(slots[0], "card");
+            Assert.That(card, Is.Not.Null);
+            Assert.That(GetField(GetField(card, "definition"), "id"), Is.EqualTo(cardId));
+            return card;
+        }
+
         private static void AssertHorizontalLivingWallFootprint(Component wall, int expectedSize)
         {
             object core = GetField(GetState(wall), "coord");
@@ -1010,6 +1310,14 @@ namespace HexDemo.PlayModeTests
             FieldInfo field = target.GetType().GetField(fieldName, InstanceFields);
             Assert.That(field, Is.Not.Null, fieldName);
             return field.GetValue(target);
+        }
+
+        private static object GetProperty(object target, string propertyName)
+        {
+            Assert.That(target, Is.Not.Null, propertyName);
+            PropertyInfo property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(property, Is.Not.Null, propertyName);
+            return property.GetValue(target);
         }
 
         private static void SetField(object target, string fieldName, object value)

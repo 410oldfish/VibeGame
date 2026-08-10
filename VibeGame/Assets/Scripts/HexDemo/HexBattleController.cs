@@ -73,6 +73,7 @@ namespace HexDemo
             _units.Clear();
             _units.Add(playerUnit);
             _enemyUnits.Clear();
+            _enemyIntentSlots.Clear();
             if (enemyUnits != null)
             {
                 for (int i = 0; i < enemyUnits.Count; i++)
@@ -86,6 +87,7 @@ namespace HexDemo
                     _units.Add(enemyUnits[i]);
                 }
             }
+            RepairLivingWallPairs();
 
             var uiGO = new GameObject("HexBattleToolkitUI_Root");
             uiGO.transform.SetParent(transform, false);
@@ -1581,11 +1583,52 @@ namespace HexDemo
             if (_playerUnit == null || !_playerUnit.IsAlive)
                 yield break;
 
+            var handledLivingWallOwners = new HashSet<HexBattleUnit>();
             for (int enemyIndex = 0; enemyIndex < _enemyUnits.Count; enemyIndex++)
             {
                 var enemy = _enemyUnits[enemyIndex];
                 if (enemy == null || !enemy.IsAlive)
                     continue;
+
+                if (enemy.IsLivingWall)
+                {
+                    HexBattleUnit actionOwner = GetLivingWallActionOwner(enemy) ?? enemy;
+                    if (!handledLivingWallOwners.Add(actionOwner))
+                        continue;
+
+                    List<HexBattleUnit> actionMembers = GetLivingWallActionMembers(actionOwner);
+                    bool canAnyMemberAct = actionMembers.Any(member => member.IsAlive && member.CanActThisTurn);
+                    if (canAnyMemberAct)
+                    {
+                        if (!_enemyIntentSlots.TryGetValue(actionOwner, out var sharedSlots) || sharedSlots == null || sharedSlots.Count == 0)
+                            DrawEnemyIntentCards(actionOwner);
+
+                        var sharedIntentSlots = GetEnemyIntentExecutionOrder(actionOwner);
+                        for (int cardIndex = 0; cardIndex < sharedIntentSlots.Count; cardIndex++)
+                        {
+                            var card = sharedIntentSlots[cardIndex]?.card;
+                            if (card == null || !actionOwner.Deck.Hand.Contains(card))
+                                continue;
+
+                            yield return ResolveEnemyIntentCard(actionOwner, card);
+                            yield return ResolveDeathsAndBattleEndRoutine();
+                            if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive)
+                                yield break;
+
+                            yield return new WaitForSeconds(0.1f);
+                        }
+                    }
+
+                    RemoveLivingWallIntentSlots(actionMembers);
+                    for (int memberIndex = 0; memberIndex < actionMembers.Count; memberIndex++)
+                        if (actionMembers[memberIndex] != null && actionMembers[memberIndex].IsAlive)
+                            actionMembers[memberIndex].EndTurn();
+                    if (_battleFinished || _playerUnit == null || !_playerUnit.IsAlive)
+                        yield break;
+                    if (!canAnyMemberAct)
+                        yield return new WaitForSeconds(0.1f);
+                    continue;
+                }
 
                 if (!enemy.CanActThisTurn)
                 {
@@ -1636,14 +1679,28 @@ namespace HexDemo
 
         private void PrepareEnemyIntents()
         {
+            RepairLivingWallPairs();
+            var handledLivingWallOwners = new HashSet<HexBattleUnit>();
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
                 if (enemy == null || !enemy.IsAlive)
                     continue;
 
+                if (enemy.IsLivingWall)
+                {
+                    HexBattleUnit actionOwner = GetLivingWallActionOwner(enemy) ?? enemy;
+                    if (!handledLivingWallOwners.Add(actionOwner))
+                        continue;
+
+                    DrawEnemyIntentCards(actionOwner);
+                    List<HexBattleUnit> members = GetLivingWallActionMembers(actionOwner);
+                    for (int memberIndex = 0; memberIndex < members.Count; memberIndex++)
+                        members[memberIndex].RefreshLabel();
+                    continue;
+                }
+
                 TryApplyEnemyPhaseTwo(enemy);
-                enemy.Deck.DiscardHand();
                 DrawEnemyIntentCards(enemy);
                 enemy.RefreshLabel();
             }
@@ -1654,22 +1711,34 @@ namespace HexDemo
             if (enemy == null)
                 return;
 
+            List<HexBattleUnit> livingWallMembers = null;
+            if (enemy.IsLivingWall)
+            {
+                livingWallMembers = GetLivingWallActionMembers(enemy);
+                enemy = livingWallMembers.Count > 0 ? livingWallMembers[0] : enemy;
+            }
+
             EnsureEnemyDefinition(enemy);
             var definition = HexCardLibrary.GetEnemyDefinition(enemy.State.enemyDefinitionId);
             if (definition == null)
             {
                 Debug.LogError($"Cannot draw intents for unknown enemy: {enemy.State.enemyDefinitionId}");
-                _enemyIntentSlots.Remove(enemy);
+                if (livingWallMembers != null)
+                    RemoveLivingWallIntentSlots(livingWallMembers);
+                else
+                    _enemyIntentSlots.Remove(enemy);
                 return;
             }
-            if (enemy.State.livingWall?.reformPending == true)
+            if (livingWallMembers != null && livingWallMembers.Any(member => member.State.livingWall.reformPending))
             {
                 enemy.Deck.DiscardHand();
-                enemy.SetLivingWallIntentPreview(null, false);
-                _enemyIntentSlots[enemy] = new List<HexEnemyIntentSlot>
+                var reformSlots = new List<HexEnemyIntentSlot>
                 {
                     new() { slotKind = HexEnemyIntentSlotKind.Free, card = null },
                 };
+                SetLivingWallIntentSlots(livingWallMembers, reformSlots);
+                for (int i = 0; i < livingWallMembers.Count; i++)
+                    livingWallMembers[i].SetLivingWallIntentPreview(null, false);
                 return;
             }
             var slots = new List<HexEnemyIntentSlot>();
@@ -1705,11 +1774,18 @@ namespace HexDemo
                     TriggerEnemyDrawPileEmptiedEffect(enemy, definition);
             }
 
-            _enemyIntentSlots[enemy] = slots;
+            if (livingWallMembers != null)
+                SetLivingWallIntentSlots(livingWallMembers, slots);
+            else
+                _enemyIntentSlots[enemy] = slots;
             if (slots.Any(slot => slot?.card?.definition?.id == "enemy_mind_flayer_obscure") && slots.Count > 1)
                 enemy.State.enemyHiddenIntentSlotIndex = Random.Range(0, slots.Count);
-            if (enemy.IsLivingWall)
-                UpdateLivingWallIntentPreview(enemy, slots.FirstOrDefault(slot => slot?.card != null)?.card);
+            if (livingWallMembers != null)
+            {
+                HexCardInstance intentCard = slots.FirstOrDefault(slot => slot?.card != null)?.card;
+                for (int i = 0; i < livingWallMembers.Count; i++)
+                    UpdateLivingWallIntentPreview(livingWallMembers[i], intentCard);
+            }
         }
 
         private void TryApplyEnemyPhaseTwo(HexBattleUnit enemy)
@@ -1898,11 +1974,6 @@ namespace HexDemo
                 if (bottomId == "enemy_vine_bottom")
                 {
                     GetPrimaryEnemyTarget(enemy)?.ApplyBind(2);
-                    return;
-                }
-                if (bottomId == "enemy_wall_bottom")
-                {
-                    TrySummonLivingWallOffspring(enemy);
                     return;
                 }
                 if (bottomId == "enemy_gargoyle_bottom")
@@ -3481,10 +3552,11 @@ namespace HexDemo
         private int CountFearCardsInEnemyDrawPiles()
         {
             int count = 0;
+            var countedDecks = new HashSet<HexDeckState>();
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
-                if (enemy == null)
+                if (enemy == null || !countedDecks.Add(enemy.Deck))
                     continue;
 
                 count += enemy.Deck.DrawPile.Count(card => IsFearToken(card));
@@ -5440,10 +5512,11 @@ namespace HexDemo
         private int EstimateEnemyPlannedDamage()
         {
             int total = 0;
+            var countedDecks = new HashSet<HexDeckState>();
             for (int i = 0; i < _enemyUnits.Count; i++)
             {
                 var enemy = _enemyUnits[i];
-                if (enemy == null || !enemy.IsAlive)
+                if (enemy == null || !enemy.IsAlive || !countedDecks.Add(enemy.Deck))
                     continue;
 
                 for (int cardIndex = 0; cardIndex < enemy.Deck.Hand.Count; cardIndex++)

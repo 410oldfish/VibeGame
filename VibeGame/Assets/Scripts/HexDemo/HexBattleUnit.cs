@@ -65,7 +65,7 @@ namespace HexDemo
         private const float DefaultDeathDuration = 1.1f;
 
         public HexBattleUnitState State { get; private set; }
-        public HexDeckState Deck { get; } = new();
+        public HexDeckState Deck { get; private set; } = new();
         public bool IsAlive => State != null && State.currentHealth > 0;
         public HexAxialCoord TargetCoord => State != null ? State.coord : default;
         public bool IsAttackTargetValid => IsAlive;
@@ -123,6 +123,12 @@ namespace HexDemo
             EnsureHealthBar();
             CacheModelRenderers();
             RefreshHealthBar();
+        }
+
+        internal void UseSharedDeck(HexDeckState sharedDeck)
+        {
+            if (sharedDeck != null)
+                Deck = sharedDeck;
         }
 
         public bool Occupies(HexAxialCoord coord)
