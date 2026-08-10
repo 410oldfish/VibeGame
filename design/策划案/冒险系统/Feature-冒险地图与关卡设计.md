@@ -113,6 +113,7 @@
 | Feature | [`Feature-章节主题设计.md`](Feature-章节主题设计.md) | 各章环境主题与学习曲线 |
 | Feature | [`Feature-节点与服务设计.md`](Feature-节点与服务设计.md) | 节点池与服务节点编排 |
 | Feature | [`Feature-战斗场景生成规则.md`](Feature-战斗场景生成规则.md) | 场景参数与生成规则 |
+| Feature | [`Feature-战斗地图预设表.md`](Feature-战斗地图预设表.md) | MVP 固定战斗地图与测试配置 |
 | Presentation | [`Presentation-冒险地图界面设计.md`](Presentation-冒险地图界面设计.md) | 路线地图与节点选择 UI |
 
 ## 8. 交叉引用

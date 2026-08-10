@@ -241,6 +241,7 @@ MVP 仅实现下列地形与改装；完整池见 §3.1 下文。**已投入登�
 | Layer | 文档 | 职责 |
 | --- | --- | --- |
 | Feature | 本文档 | 地形分层、池子与改装动作 |
+| Feature | [`Feature-地形表.md`](Feature-地形表.md) | 地形、构筑物、临时覆盖与可视区拾取物的实现状态表与创意池 |
 | Feature | [`Feature-构筑物互动图鉴.md`](Feature-构筑物互动图鉴.md) | 西幻 DND 式构筑物 **逐条** 互动 |
 | Feature | [`../遭遇系统/Feature-遭遇与原型战斗设计.md`](../遭遇系统/Feature-遭遇与原型战斗设计.md) | 原型战场地形组合 |
 | Presentation | [`Presentation-地形可视化与反馈设计.md`](Presentation-地形可视化与反馈设计.md) | 三层地形与改装预览 UI |
